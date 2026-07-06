@@ -1,0 +1,14 @@
+version: '3.8'
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: clipper-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - clipper_redis_data:/data
+    command: redis-server --appendonly yes
+    restart: always
+
+volumes:
+  clipper_redis_data:

@@ -1,0 +1,37 @@
+# Java Build Artifacts
+/target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Python Virtual Environments
+/venv/
+.venv/
+ENV/
+env/
+*.pyc
+__pycache__/
+
+# Julius Processing Temp/Library Directories
+/data/
+/db/
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.env*.local
+
+# System/Misc
+.DS_Store
+Thumbs.db
