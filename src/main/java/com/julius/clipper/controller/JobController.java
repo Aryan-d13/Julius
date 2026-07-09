@@ -50,6 +50,14 @@ public class JobController {
                                                          @RequestHeader(value = "X-User-Id", required = false) String headerUserId) {
         String jobId = UUID.randomUUID().toString();
         String userId = (headerUserId != null && !headerUserId.isBlank()) ? headerUserId : UUID.randomUUID().toString();
+        String correlationId = org.slf4j.MDC.get(com.julius.clipper.telemetry.CorrelationFilter.CORRELATION_ID_MDC_KEY);
+        String requestId = org.slf4j.MDC.get(com.julius.clipper.telemetry.CorrelationFilter.REQUEST_ID_MDC_KEY);
+        if (correlationId == null || correlationId.isBlank()) {
+            correlationId = "corr-" + UUID.randomUUID().toString().substring(0, 8);
+        }
+        if (requestId == null || requestId.isBlank()) {
+            requestId = "req-" + UUID.randomUUID().toString().substring(0, 8);
+        }
 
         log.info("Submitting new clip job config: URL={}, count={}, templateRef={}", config.getUrl(), config.getCount(), config.getTemplateRef());
 
@@ -57,7 +65,7 @@ public class JobController {
         Job job = Job.builder()
                 .id(jobId)
                 .userId(userId)
-                .correlationId("correlation-" + UUID.randomUUID().toString().substring(0, 8))
+                .correlationId(correlationId)
                 .config(config)
                 .clipCount(config.getCount())
                 .status(JobDBStatus.PENDING)
@@ -73,6 +81,8 @@ public class JobController {
         taskPayload.put("copy_language", config.getCopyLanguage() != null ? config.getCopyLanguage() : "en");
         taskPayload.put("min_duration", config.getMinDuration() > 0 ? config.getMinDuration() : 30.0);
         taskPayload.put("max_duration", config.getMaxDuration() > 0 ? config.getMaxDuration() : 900.0);
+        taskPayload.put("correlation_id", correlationId);
+        taskPayload.put("request_id", requestId);
 
         Task downloadTask = Task.builder()
                 .id(UUID.randomUUID().toString())

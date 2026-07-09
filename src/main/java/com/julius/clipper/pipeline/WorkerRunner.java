@@ -145,11 +145,24 @@ public class WorkerRunner {
     private void executeTaskWithRelease(Task task, Semaphore sem) {
         activeWorkersCount.incrementAndGet();
         MDC.put("virtual_thread", String.valueOf(Thread.currentThread().isVirtual()));
+        
+        String correlationId = (String) task.getPayload().get("correlation_id");
+        String requestId = (String) task.getPayload().get("request_id");
+        String jobId = task.getJobId();
+        String userId = task.getUserId();
+        
+        if (correlationId != null) MDC.put("correlation_id", correlationId);
+        if (requestId != null) MDC.put("request_id", requestId);
+        if (jobId != null) MDC.put("job_id", jobId);
+        if (userId != null) MDC.put("user_id", userId);
+        MDC.put("task_id", task.getId());
+        MDC.put("worker_id", task.getType().name() + "Worker");
+
         try {
             executeTask(task);
         } finally {
             activeWorkersCount.decrementAndGet();
-            MDC.remove("virtual_thread");
+            MDC.clear();
             sem.release();
         }
     }
