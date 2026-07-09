@@ -189,6 +189,13 @@ public class Orchestrator {
                 break;
         }
 
+        // Propagate execution metadata context to all downstream tasks
+        if (currentTask.getMetadata() != null && !currentTask.getMetadata().isEmpty()) {
+            for (Task nextTask : nextTasks) {
+                nextTask.setMetadata(new HashMap<>(currentTask.getMetadata()));
+            }
+        }
+
         return nextTasks;
     }
 

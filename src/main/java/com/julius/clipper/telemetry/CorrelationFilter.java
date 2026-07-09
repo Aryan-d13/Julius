@@ -24,9 +24,6 @@ public class CorrelationFilter implements Filter {
                 correlationId = httpRequest.getHeader("X-Request-ID");
             }
             if (correlationId == null || correlationId.isBlank()) {
-                correlationId = httpRequest.getHeader("traceparent");
-            }
-            if (correlationId == null || correlationId.isBlank()) {
                 correlationId = "corr-" + UUID.randomUUID().toString().substring(0, 8);
             }
 

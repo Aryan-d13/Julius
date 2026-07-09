@@ -29,6 +29,11 @@ public class Task {
     @Builder.Default
     private Map<String, Object> payload = new HashMap<>();
 
+    @Convert(converter = MapJsonConverter.class)
+    @Column(name = "metadata", columnDefinition = "text")
+    @Builder.Default
+    private Map<String, Object> metadata = new HashMap<>();
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     @Builder.Default

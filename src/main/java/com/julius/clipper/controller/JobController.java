@@ -81,13 +81,16 @@ public class JobController {
         taskPayload.put("copy_language", config.getCopyLanguage() != null ? config.getCopyLanguage() : "en");
         taskPayload.put("min_duration", config.getMinDuration() > 0 ? config.getMinDuration() : 30.0);
         taskPayload.put("max_duration", config.getMaxDuration() > 0 ? config.getMaxDuration() : 900.0);
-        taskPayload.put("correlation_id", correlationId);
-        taskPayload.put("request_id", requestId);
+
+        Map<String, Object> taskMetadata = new HashMap<>();
+        taskMetadata.put("correlation_id", correlationId);
+        taskMetadata.put("request_id", requestId);
 
         Task downloadTask = Task.builder()
                 .id(UUID.randomUUID().toString())
                 .type(TaskType.DOWNLOAD)
                 .payload(taskPayload)
+                .metadata(taskMetadata)
                 .status(TaskStatus.PENDING)
                 .build();
 

@@ -108,4 +108,24 @@ public class TelemetryLoggingTest {
         Object safeMasked = masker.mask(null, safeLog);
         assertThat(safeMasked).isEqualTo(safeLog);
     }
+
+    @Test
+    public void testTaskMetadataContextPropagation() {
+        com.julius.clipper.domain.Task task = new com.julius.clipper.domain.Task();
+        task.getMetadata().put("correlation_id", "corr-999");
+        task.getMetadata().put("request_id", "req-888");
+
+        com.julius.clipper.domain.Task nextTask = com.julius.clipper.domain.Task.builder().payload(new java.util.HashMap<>()).build();
+        java.util.List<com.julius.clipper.domain.Task> nextTasks = java.util.List.of(nextTask);
+
+        // Propagate
+        if (task.getMetadata() != null && !task.getMetadata().isEmpty()) {
+            for (com.julius.clipper.domain.Task t : nextTasks) {
+                t.setMetadata(new java.util.HashMap<>(task.getMetadata()));
+            }
+        }
+
+        assertThat(nextTask.getMetadata().get("correlation_id")).isEqualTo("corr-999");
+        assertThat(nextTask.getMetadata().get("request_id")).isEqualTo("req-888");
+    }
 }

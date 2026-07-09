@@ -146,8 +146,8 @@ public class WorkerRunner {
         activeWorkersCount.incrementAndGet();
         MDC.put("virtual_thread", String.valueOf(Thread.currentThread().isVirtual()));
         
-        String correlationId = (String) task.getPayload().get("correlation_id");
-        String requestId = (String) task.getPayload().get("request_id");
+        String correlationId = task.getMetadata() != null ? (String) task.getMetadata().get("correlation_id") : null;
+        String requestId = task.getMetadata() != null ? (String) task.getMetadata().get("request_id") : null;
         String jobId = task.getJobId();
         String userId = task.getUserId();
         
