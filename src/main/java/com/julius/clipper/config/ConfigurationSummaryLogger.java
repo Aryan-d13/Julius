@@ -27,6 +27,7 @@ public class ConfigurationSummaryLogger implements InitializingBean {
     private final WorkerProperties workerProperties;
     private final DownloadProperties downloadProperties;
     private final WorkspaceProperties workspaceProperties;
+    private final FeatureFlagsProperties featureFlagsProperties;
     
     private final BuildProperties buildProperties;
 
@@ -40,6 +41,7 @@ public class ConfigurationSummaryLogger implements InitializingBean {
             WorkerProperties workerProperties,
             DownloadProperties downloadProperties,
             WorkspaceProperties workspaceProperties,
+            FeatureFlagsProperties featureFlagsProperties,
             @Autowired(required = false) BuildProperties buildProperties) {
         this.environment = environment;
         this.storageProperties = storageProperties;
@@ -50,6 +52,7 @@ public class ConfigurationSummaryLogger implements InitializingBean {
         this.workerProperties = workerProperties;
         this.downloadProperties = downloadProperties;
         this.workspaceProperties = workspaceProperties;
+        this.featureFlagsProperties = featureFlagsProperties;
         this.buildProperties = buildProperties;
     }
 
@@ -147,6 +150,13 @@ public class ConfigurationSummaryLogger implements InitializingBean {
             schema.put("download.dir", downloadProperties.dir());
             schema.put("download.cookies-path", downloadProperties.cookiesPath() != null && !downloadProperties.cookiesPath().isBlank() ? downloadProperties.cookiesPath() : "null");
             schema.put("download.format", downloadProperties.format());
+        }
+
+        // 8. Feature Flags
+        if (featureFlagsProperties != null && featureFlagsProperties.features() != null) {
+            featureFlagsProperties.features().forEach((key, value) -> {
+                schema.put("features." + key, String.valueOf(value));
+            });
         }
 
         return schema;
