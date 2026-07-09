@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import com.julius.clipper.telemetry.AiMetrics;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
@@ -27,11 +28,15 @@ public class GeminiService {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    private final AiMetrics aiMetrics;
+
     public GeminiService(
             @Value("${google.api.key:}") String apiKey,
-            @Value("${gemini.model:gemini-1.5-flash}") String modelName) {
+            @Value("${gemini.model:gemini-1.5-flash}") String modelName,
+            AiMetrics aiMetrics) {
         this.apiKey = apiKey;
         this.modelName = modelName;
+        this.aiMetrics = aiMetrics;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
                 .build();
@@ -115,6 +120,21 @@ public class GeminiService {
         }
 
         Map<String, Object> rootResponse = objectMapper.readValue(response.body(), new TypeReference<Map<String, Object>>() {});
+        
+        if (aiMetrics != null) {
+            Map<String, Object> usageMetadata = (Map<String, Object>) rootResponse.get("usageMetadata");
+            if (usageMetadata != null) {
+                Number promptTokens = (Number) usageMetadata.get("promptTokenCount");
+                Number completionTokens = (Number) usageMetadata.get("candidatesTokenCount");
+                if (promptTokens != null) {
+                    aiMetrics.recordGeminiTokens(modelName, "prompt", promptTokens.longValue());
+                }
+                if (completionTokens != null) {
+                    aiMetrics.recordGeminiTokens(modelName, "completion", completionTokens.longValue());
+                }
+            }
+        }
+
         List<Map<String, Object>> candidates = (List<Map<String, Object>>) rootResponse.get("candidates");
         if (candidates == null || candidates.isEmpty()) {
             throw new NoSuchElementException("Gemini API returned an empty list of generation candidates.");
@@ -243,6 +263,21 @@ public class GeminiService {
         }
 
         Map<String, Object> rootResponse = objectMapper.readValue(response.body(), new TypeReference<Map<String, Object>>() {});
+        
+        if (aiMetrics != null) {
+            Map<String, Object> usageMetadata = (Map<String, Object>) rootResponse.get("usageMetadata");
+            if (usageMetadata != null) {
+                Number promptTokens = (Number) usageMetadata.get("promptTokenCount");
+                Number completionTokens = (Number) usageMetadata.get("candidatesTokenCount");
+                if (promptTokens != null) {
+                    aiMetrics.recordGeminiTokens("gemini-1.5-flash", "prompt", promptTokens.longValue());
+                }
+                if (completionTokens != null) {
+                    aiMetrics.recordGeminiTokens("gemini-1.5-flash", "completion", completionTokens.longValue());
+                }
+            }
+        }
+
         List<Map<String, Object>> candidates = (List<Map<String, Object>>) rootResponse.get("candidates");
         if (candidates == null || candidates.isEmpty()) {
             throw new NoSuchElementException("Gemini returned empty transcription candidates.");

@@ -12,14 +12,22 @@ import java.util.List;
 public class DbQueue implements QueueProvider {
 
     private final TaskRepository taskRepository;
+    private final io.micrometer.core.instrument.MeterRegistry meterRegistry;
 
-    public DbQueue(TaskRepository taskRepository) {
+    public DbQueue(TaskRepository taskRepository, io.micrometer.core.instrument.MeterRegistry meterRegistry) {
         this.taskRepository = taskRepository;
+        this.meterRegistry = meterRegistry;
     }
 
     @Override
     @Transactional
     public void push(Task task) {
+        io.micrometer.core.instrument.Counter.builder("clipper.queue.operations")
+                .tag("operation", "push")
+                .tag("task_type", task.getType().name())
+                .register(meterRegistry)
+                .increment();
+
         task.setStatus(TaskStatus.PENDING);
         taskRepository.save(task);
     }
@@ -39,6 +47,13 @@ public class DbQueue implements QueueProvider {
         task.setStatus(TaskStatus.PROCESSING);
         task.setStartedAt(LocalDateTime.now());
         task.setUpdatedAt(LocalDateTime.now());
+
+        io.micrometer.core.instrument.Counter.builder("clipper.queue.operations")
+                .tag("operation", "pop")
+                .tag("task_type", taskType.name())
+                .register(meterRegistry)
+                .increment();
+
         return taskRepository.save(task);
     }
 
@@ -46,6 +61,12 @@ public class DbQueue implements QueueProvider {
     @Transactional
     public void complete(Task task) {
         taskRepository.deleteById(task.getId());
+
+        io.micrometer.core.instrument.Counter.builder("clipper.queue.operations")
+                .tag("operation", "complete")
+                .tag("task_type", task.getType().name())
+                .register(meterRegistry)
+                .increment();
     }
 
     @Override
@@ -56,6 +77,12 @@ public class DbQueue implements QueueProvider {
             task.setError(error);
             task.setUpdatedAt(LocalDateTime.now());
             taskRepository.save(task);
+
+            io.micrometer.core.instrument.Counter.builder("clipper.queue.operations")
+                    .tag("operation", "fail")
+                    .tag("task_type", task.getType().name())
+                    .register(meterRegistry)
+                    .increment();
         });
     }
 
@@ -66,5 +93,11 @@ public class DbQueue implements QueueProvider {
             task.setUpdatedAt(LocalDateTime.now());
             taskRepository.save(task);
         });
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long getQueueDepth(TaskType taskType) {
+        return taskRepository.countByTypeAndStatus(taskType, TaskStatus.PENDING);
     }
 }

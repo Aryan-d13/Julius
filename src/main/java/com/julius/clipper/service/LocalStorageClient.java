@@ -14,15 +14,17 @@ import java.util.HexFormat;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import com.julius.clipper.telemetry.StorageMetrics;
+
 public class LocalStorageClient implements StorageClient {
 
     private static final Logger log = LoggerFactory.getLogger(LocalStorageClient.class);
     private final String rootDir;
-    private final MeterRegistry meterRegistry;
+    private final StorageMetrics storageMetrics;
 
-    public LocalStorageClient(String rootDir, MeterRegistry meterRegistry) {
+    public LocalStorageClient(String rootDir, StorageMetrics storageMetrics) {
         this.rootDir = rootDir;
-        this.meterRegistry = meterRegistry;
+        this.storageMetrics = storageMetrics;
         try {
             Files.createDirectories(Paths.get(rootDir));
         } catch (IOException e) {
@@ -221,21 +223,16 @@ public class LocalStorageClient implements StorageClient {
     }
 
     private void recordOperationMetric(String op, long bytes, long durationNs, String exception) {
-        if (meterRegistry == null) return;
+        if (storageMetrics == null) return;
         try {
             String prov = "local";
-            meterRegistry.counter("clipper.storage.bytes." + (op.equals("upload") ? "uploaded" : "downloaded")).increment(bytes);
-            
-            io.micrometer.core.instrument.Tags tags = io.micrometer.core.instrument.Tags.of(
-                "provider", prov,
-                "operation", op
-            );
-            
-            if (exception != null) {
-                meterRegistry.counter("clipper.storage.failures", tags.and("exception", exception)).increment();
+            if (bytes > 0) {
+                storageMetrics.recordBytes(op, prov, bytes);
             }
-            
-            meterRegistry.timer("clipper.storage.operation.duration", tags).record(durationNs, TimeUnit.NANOSECONDS);
+            if (exception != null) {
+                storageMetrics.recordFailure(op, prov, exception);
+            }
+            storageMetrics.recordDuration(op, prov, durationNs, TimeUnit.NANOSECONDS);
         } catch (Exception e) {
             log.warn("Failed to register metric: {}", e.getMessage());
         }

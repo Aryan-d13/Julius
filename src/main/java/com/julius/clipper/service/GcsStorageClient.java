@@ -19,17 +19,19 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import com.julius.clipper.telemetry.StorageMetrics;
+
 public class GcsStorageClient implements StorageClient {
 
     private static final Logger log = LoggerFactory.getLogger(GcsStorageClient.class);
     private final Storage storage;
     private final String bucketName;
-    private final MeterRegistry meterRegistry;
+    private final StorageMetrics storageMetrics;
 
-    public GcsStorageClient(Storage storage, String bucketName, MeterRegistry meterRegistry) {
+    public GcsStorageClient(Storage storage, String bucketName, StorageMetrics storageMetrics) {
         this.storage = storage;
         this.bucketName = bucketName;
-        this.meterRegistry = meterRegistry;
+        this.storageMetrics = storageMetrics;
         log.info("Initialized GCS Storage Client for bucket: {}", bucketName);
     }
 
@@ -175,21 +177,16 @@ public class GcsStorageClient implements StorageClient {
     }
 
     private void recordOperationMetric(String op, long bytes, long durationNs, String exception) {
-        if (meterRegistry == null) return;
+        if (storageMetrics == null) return;
         try {
             String prov = "gcs";
-            meterRegistry.counter("clipper.storage.bytes." + (op.equals("upload") ? "uploaded" : "downloaded")).increment(bytes);
-            
-            io.micrometer.core.instrument.Tags tags = io.micrometer.core.instrument.Tags.of(
-                "provider", prov,
-                "operation", op
-            );
-            
-            if (exception != null) {
-                meterRegistry.counter("clipper.storage.failures", tags.and("exception", exception)).increment();
+            if (bytes > 0) {
+                storageMetrics.recordBytes(op, prov, bytes);
             }
-            
-            meterRegistry.timer("clipper.storage.operation.duration", tags).record(durationNs, TimeUnit.NANOSECONDS);
+            if (exception != null) {
+                storageMetrics.recordFailure(op, prov, exception);
+            }
+            storageMetrics.recordDuration(op, prov, durationNs, TimeUnit.NANOSECONDS);
         } catch (Exception e) {
             log.warn("Failed to register metric: {}", e.getMessage());
         }

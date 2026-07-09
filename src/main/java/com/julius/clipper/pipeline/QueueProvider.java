@@ -8,4 +8,5 @@ public interface QueueProvider {
     void complete(Task task);
     void fail(String taskId, String error);
     void touchTaskHeartbeat(String taskId);
+    long getQueueDepth(TaskType taskType);
 }

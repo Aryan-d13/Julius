@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 import com.julius.clipper.domain.Task;
+import com.julius.clipper.telemetry.WorkerMetrics;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -38,6 +39,7 @@ public class WorkerRunner {
     private final ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
     
     private final AtomicInteger activeWorkersCount = new AtomicInteger(0);
+    private final WorkerMetrics workerMetrics;
     private volatile boolean running = false;
 
     @Autowired
@@ -46,11 +48,13 @@ public class WorkerRunner {
     public WorkerRunner(QueueProvider queueProvider, 
                         Orchestrator orchestrator, 
                         EventPublisher eventPublisher,
-                        MeterRegistry meterRegistry) {
+                        MeterRegistry meterRegistry,
+                        WorkerMetrics workerMetrics) {
         this.queueProvider = queueProvider;
         this.orchestrator = orchestrator;
         this.eventPublisher = eventPublisher;
         this.meterRegistry = meterRegistry;
+        this.workerMetrics = workerMetrics;
 
         // Register custom gauge for active virtual thread workers
         Gauge.builder("clipper.pipeline.active.workers", activeWorkersCount, AtomicInteger::get)
@@ -191,8 +195,8 @@ public class WorkerRunner {
             }
         }, 30, 30, TimeUnit.SECONDS);
 
-        String statusOutcome = "SUCCESS";
-        long startTime = System.currentTimeMillis();
+        io.micrometer.core.instrument.Timer.Sample sample = workerMetrics.startTask();
+        String statusOutcome = "success";
 
         try {
             // 3. Process task via worker
@@ -220,7 +224,7 @@ public class WorkerRunner {
             queueProvider.complete(task);
 
         } catch (Exception e) {
-            statusOutcome = "FAILED";
+            statusOutcome = "failed";
             log.error("Task execution failed. TaskId: {}, Type: {}", task.getId(), task.getType(), e);
             
             queueProvider.fail(task.getId(), e.getMessage());
@@ -231,25 +235,7 @@ public class WorkerRunner {
             }
         } finally {
             heartbeatScheduler.shutdownNow();
-
-            long duration = System.currentTimeMillis() - startTime;
-
-            // Timer: clipper.task.execution.duration
-            Timer.builder("clipper.task.execution.duration")
-                    .description("Execution timing distributions of pipeline worker loops")
-                    .tag("type", task.getType().name())
-                    .publishPercentiles(0.5, 0.9, 0.95, 0.99)
-                    .publishPercentileHistogram()
-                    .register(meterRegistry)
-                    .record(duration, TimeUnit.MILLISECONDS);
-
-            // Counter: clipper.tasks.processed.total
-            Counter.builder("clipper.tasks.processed.total")
-                    .description("Aggregated volume of pipeline steps processed")
-                    .tag("type", task.getType().name())
-                    .tag("status", statusOutcome)
-                    .register(meterRegistry)
-                    .increment();
+            workerMetrics.recordTask(sample, task.getType().name(), statusOutcome);
         }
     }
 

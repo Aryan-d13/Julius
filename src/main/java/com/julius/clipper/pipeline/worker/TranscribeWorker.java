@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.julius.clipper.domain.Task;
 import com.julius.clipper.pipeline.Worker;
 import com.julius.clipper.service.SegmentMerger;
+import com.julius.clipper.telemetry.AiMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,16 +38,20 @@ public class TranscribeWorker implements Worker {
     private final com.julius.clipper.service.StorageClient storageClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    private final AiMetrics aiMetrics;
+
     public TranscribeWorker(SegmentMerger segmentMerger,
                             @Value("${clipper.python.path}") String pythonPath,
                             @Value("${clipper.python.env}") String pythonPathEnv,
                             @Value("${clipper.whisper.model:large-v3-turbo}") String whisperModel,
-                            com.julius.clipper.service.StorageClient storageClient) {
+                            com.julius.clipper.service.StorageClient storageClient,
+                            AiMetrics aiMetrics) {
         this.segmentMerger = segmentMerger;
         this.pythonPath = pythonPath;
         this.pythonPathEnv = pythonPathEnv;
         this.whisperModel = whisperModel;
         this.storageClient = storageClient;
+        this.aiMetrics = aiMetrics;
     }
 
     @Override
@@ -125,17 +130,35 @@ public class TranscribeWorker implements Worker {
             }
             
             pb.redirectErrorStream(true);
-            Process process = pb.start();
+            
+            io.micrometer.core.instrument.Timer.Sample whisperSample = aiMetrics != null ? aiMetrics.startTranscription() : null;
+            String whisperStatus = "success";
+            int exitCode = -1;
 
-            // Log python output
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    log.info("[Python Whisper] {}", line);
+            try {
+                Process process = pb.start();
+
+                // Log python output
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        log.info("[Python Whisper] {}", line);
+                    }
+                }
+
+                exitCode = process.waitFor();
+                if (exitCode != 0) {
+                    whisperStatus = "failed";
+                }
+            } catch (Exception e) {
+                whisperStatus = "failed";
+                throw e;
+            } finally {
+                if (whisperSample != null) {
+                    aiMetrics.recordTranscription(whisperSample, whisperModel, whisperStatus);
                 }
             }
 
-            int exitCode = process.waitFor();
             if (exitCode != 0) {
                 throw new RuntimeException("Python transcription bridge script failed with exit code: " + exitCode);
             }

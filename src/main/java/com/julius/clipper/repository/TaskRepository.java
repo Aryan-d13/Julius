@@ -25,4 +25,6 @@ public interface TaskRepository extends JpaRepository<Task, String> {
             @Param("status") TaskStatus status, 
             Pageable pageable
     );
+
+    long countByTypeAndStatus(TaskType type, TaskStatus status);
 }

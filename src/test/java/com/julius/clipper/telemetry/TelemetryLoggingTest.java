@@ -17,7 +17,7 @@ public class TelemetryLoggingTest {
 
     @Test
     public void testCorrelationIdGenerationAndMdcBinding() throws Exception {
-        CorrelationFilter filter = new CorrelationFilter();
+        CorrelationFilter filter = new CorrelationFilter(null);
         MockHttpServletRequest request = new MockHttpServletRequest();
         MockHttpServletResponse response = new MockHttpServletResponse();
         
@@ -42,7 +42,7 @@ public class TelemetryLoggingTest {
 
     @Test
     public void testCorrelationIdHeaderPreservation() throws Exception {
-        CorrelationFilter filter = new CorrelationFilter();
+        CorrelationFilter filter = new CorrelationFilter(null);
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("X-Correlation-ID", "custom-corr-123");
         request.addHeader("X-Request-ID", "custom-req-456");

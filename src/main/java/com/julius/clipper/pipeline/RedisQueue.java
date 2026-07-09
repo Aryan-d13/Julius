@@ -18,8 +18,11 @@ public class RedisQueue implements QueueProvider {
             .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
             .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-    public RedisQueue(StringRedisTemplate redisTemplate) {
+    private final io.micrometer.core.instrument.MeterRegistry meterRegistry;
+
+    public RedisQueue(StringRedisTemplate redisTemplate, io.micrometer.core.instrument.MeterRegistry meterRegistry) {
         this.redisTemplate = redisTemplate;
+        this.meterRegistry = meterRegistry;
     }
 
     @Override
@@ -30,6 +33,12 @@ public class RedisQueue implements QueueProvider {
         String taskId = task.getId();
         String userId = task.getUserId();
         TaskType taskType = task.getType();
+
+        io.micrometer.core.instrument.Counter.builder("clipper.queue.operations")
+                .tag("operation", "push")
+                .tag("task_type", taskType.name())
+                .register(meterRegistry)
+                .increment();
 
         try {
             // 1. Serialize and save the Task to HASH
@@ -87,6 +96,12 @@ public class RedisQueue implements QueueProvider {
                     redisTemplate.opsForList().remove("seone:pending_signal:" + taskTypeName, 0, taskId);
                     redisTemplate.opsForList().leftPush("seone:processing_signal:" + taskTypeName, taskId);
                     
+                    io.micrometer.core.instrument.Counter.builder("clipper.queue.operations")
+                            .tag("operation", "pop")
+                            .tag("task_type", taskTypeName)
+                            .register(meterRegistry)
+                            .increment();
+
                     return hydrateTask(taskId);
                 }
             }
@@ -97,6 +112,12 @@ public class RedisQueue implements QueueProvider {
         String legacyProcessingKey = "seone:processing:" + taskTypeName;
         String taskId = redisTemplate.opsForList().rightPopAndLeftPush(legacyQueueKey, legacyProcessingKey);
         if (taskId != null) {
+            io.micrometer.core.instrument.Counter.builder("clipper.queue.operations")
+                    .tag("operation", "pop")
+                    .tag("task_type", taskTypeName)
+                    .register(meterRegistry)
+                    .increment();
+
             return hydrateTask(taskId);
         }
 
@@ -124,6 +145,12 @@ public class RedisQueue implements QueueProvider {
 
         // Delete the task hash details
         redisTemplate.delete("seone:task:" + taskId);
+
+        io.micrometer.core.instrument.Counter.builder("clipper.queue.operations")
+                .tag("operation", "complete")
+                .tag("task_type", taskTypeName)
+                .register(meterRegistry)
+                .increment();
     }
 
     @Override
@@ -165,6 +192,12 @@ public class RedisQueue implements QueueProvider {
 
         // Delete original task hash
         redisTemplate.delete(taskHashKey);
+
+        io.micrometer.core.instrument.Counter.builder("clipper.queue.operations")
+                .tag("operation", "fail")
+                .tag("task_type", taskTypeName)
+                .register(meterRegistry)
+                .increment();
     }
 
     @Override
@@ -201,6 +234,22 @@ public class RedisQueue implements QueueProvider {
             return task;
         } catch (Exception e) {
             throw new RuntimeException("Failed to hydrate Task from Redis hash", e);
+        }
+    }
+
+    @Override
+    public long getQueueDepth(TaskType taskType) {
+        String pendingSignalKey = "seone:pending_signal:" + taskType.name();
+        String legacyKey = "seone:queue:" + taskType.name();
+        try {
+            Long pendingSignalSize = redisTemplate.opsForList().size(pendingSignalKey);
+            Long legacySize = redisTemplate.opsForList().size(legacyKey);
+            long total = 0;
+            if (pendingSignalSize != null) total += pendingSignalSize;
+            if (legacySize != null) total += legacySize;
+            return total;
+        } catch (Exception e) {
+            return 0L;
         }
     }
 }
