@@ -1,14 +1,10 @@
 package com.julius.clipper.config.validation;
 
 import com.julius.clipper.config.properties.*;
-import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Component;
-import jakarta.validation.Validator;
-import jakarta.validation.ConstraintViolation;
-import java.util.Set;
 
 @Component
-public class ConfigurationValidator implements InitializingBean {
+public class ConfigurationValidator {
 
     private final StorageProperties storageProperties;
     private final QueueProperties queueProperties;
@@ -19,8 +15,7 @@ public class ConfigurationValidator implements InitializingBean {
     
     private final StoragePropertiesValidator storagePropertiesValidator;
     private final QueuePropertiesValidator queuePropertiesValidator;
-    
-    private final Validator validator;
+    private final BeanValidator beanValidator;
 
     public ConfigurationValidator(
             StorageProperties storageProperties,
@@ -31,7 +26,7 @@ public class ConfigurationValidator implements InitializingBean {
             WorkerProperties workerProperties,
             StoragePropertiesValidator storagePropertiesValidator,
             QueuePropertiesValidator queuePropertiesValidator,
-            Validator validator) {
+            BeanValidator beanValidator) {
         this.storageProperties = storageProperties;
         this.queueProperties = queueProperties;
         this.aiProperties = aiProperties;
@@ -40,40 +35,24 @@ public class ConfigurationValidator implements InitializingBean {
         this.workerProperties = workerProperties;
         this.storagePropertiesValidator = storagePropertiesValidator;
         this.queuePropertiesValidator = queuePropertiesValidator;
-        this.validator = validator;
+        this.beanValidator = beanValidator;
     }
 
-    @Override
-    public void afterPropertiesSet() throws Exception {
-        // 1. Run standard JSR-380 validation
-        validatePropertyBean(storageProperties, "clipper.storage");
-        validatePropertyBean(queueProperties, "clipper.queue");
-        validatePropertyBean(aiProperties, "clipper.ai");
-        validatePropertyBean(telemetryProperties, "clipper.telemetry");
-        validatePropertyBean(securityProperties, "clipper.security");
-        validatePropertyBean(workerProperties, "clipper.worker");
+    public void validateAll() {
+        // 1. Standard JSR-380 bean validations
+        beanValidator.validate(storageProperties, "clipper.storage");
+        beanValidator.validate(queueProperties, "clipper.queue");
+        beanValidator.validate(aiProperties, "clipper.ai");
+        beanValidator.validate(telemetryProperties, "clipper.telemetry");
+        beanValidator.validate(securityProperties, "clipper.security");
+        beanValidator.validate(workerProperties, "clipper.worker");
 
-        // 2. Run conditional validations using injected validators
+        // 2. Custom conditional validations
         if (storageProperties != null) {
             storagePropertiesValidator.validate(storageProperties);
         }
         if (queueProperties != null) {
             queuePropertiesValidator.validate(queueProperties);
-        }
-    }
-
-    private void validatePropertyBean(Object bean, String prefix) {
-        if (bean == null) {
-            return;
-        }
-        Set<ConstraintViolation<Object>> violations = validator.validate(bean);
-        if (!violations.isEmpty()) {
-            StringBuilder sb = new StringBuilder();
-            sb.append("Configuration validation failed for prefix '").append(prefix).append("':\n");
-            for (ConstraintViolation<Object> violation : violations) {
-                sb.append(" - ").append(violation.getPropertyPath()).append(": ").append(violation.getMessage()).append("\n");
-            }
-            throw new IllegalStateException(sb.toString());
         }
     }
 }

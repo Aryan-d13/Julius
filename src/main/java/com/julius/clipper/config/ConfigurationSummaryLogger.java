@@ -4,7 +4,9 @@ import com.julius.clipper.config.properties.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
-import org.springframework.core.env.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.info.BuildProperties;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -21,22 +23,28 @@ public class ConfigurationSummaryLogger implements InitializingBean {
     private final QueueProperties queueProperties;
     private final AiProperties aiProperties;
     private final TelemetryProperties telemetryProperties;
+    private final SecurityProperties securityProperties;
+    private final WorkerProperties workerProperties;
     
-    private static final List<String> SENSITIVE_KEYWORDS = List.of(
-            "password", "api-key", "secret", "token", "credential", "private-key"
-    );
+    private final BuildProperties buildProperties;
 
     public ConfigurationSummaryLogger(
             Environment environment,
             StorageProperties storageProperties,
             QueueProperties queueProperties,
             AiProperties aiProperties,
-            TelemetryProperties telemetryProperties) {
+            TelemetryProperties telemetryProperties,
+            SecurityProperties securityProperties,
+            WorkerProperties workerProperties,
+            @Autowired(required = false) BuildProperties buildProperties) {
         this.environment = environment;
         this.storageProperties = storageProperties;
         this.queueProperties = queueProperties;
         this.aiProperties = aiProperties;
         this.telemetryProperties = telemetryProperties;
+        this.securityProperties = securityProperties;
+        this.workerProperties = workerProperties;
+        this.buildProperties = buildProperties;
     }
 
     @Override
@@ -45,7 +53,7 @@ public class ConfigurationSummaryLogger implements InitializingBean {
     }
 
     public void logStartupSummary() {
-        String version = environment.getProperty("info.app.version", "1.0.0-SNAPSHOT");
+        String version = buildProperties != null ? buildProperties.getVersion() : "unknown";
         String activeProfiles = Arrays.toString(environment.getActiveProfiles());
         
         String storageType = storageProperties.type();
@@ -59,12 +67,8 @@ public class ConfigurationSummaryLogger implements InitializingBean {
         String whisperModel = aiProperties.whisper() != null ? aiProperties.whisper().model() : "N/A";
         String aiState = "Gemini: " + aiProperties.geminiModel() + " / Whisper: " + whisperModel;
 
-        Map<String, String> resolvedClipperProperties = getSanitizedClipperProperties();
-        long featureFlagsCount = resolvedClipperProperties.keySet().stream()
-                .filter(k -> k.startsWith("clipper.features."))
-                .count();
-
-        String fingerprint = calculateFingerprint(resolvedClipperProperties);
+        SortedMap<String, String> schema = getNormalizedModelSchema();
+        String fingerprint = calculateFingerprint(schema);
 
         log.info("====================================================================");
         log.info("                 JULIUS STARTUP CONFIGURATION REPORT                 ");
@@ -76,64 +80,59 @@ public class ConfigurationSummaryLogger implements InitializingBean {
         log.info("Queue Provider      : {}", queueType);
         log.info("Telemetry State     : {}", otlpState);
         log.info("AI Provider         : {}", aiState);
-        log.info("Feature Flags Count : {}", featureFlagsCount);
         log.info("Config Fingerprint  : {}", fingerprint);
-        log.info("--------------------------------------------------------------------");
-        log.info("Effective Sanitized Properties:");
-        resolvedClipperProperties.keySet().stream().sorted().forEach(key -> {
-            String value = resolvedClipperProperties.get(key);
-            log.info("  {} = {}", key, value);
-        });
         log.info("====================================================================");
+
+        // Move detailed property dumps to DEBUG level only
+        if (log.isDebugEnabled()) {
+            log.debug("Effective Sanitized Configuration Model Details:");
+            schema.forEach((key, value) -> log.debug("  {} = {}", key, value));
+        }
     }
 
-    public Map<String, String> getSanitizedClipperProperties() {
-        Map<String, String> properties = new TreeMap<>();
-        if (environment instanceof ConfigurableEnvironment) {
-            for (PropertySource<?> source : ((ConfigurableEnvironment) environment).getPropertySources()) {
-                if (source instanceof EnumerablePropertySource) {
-                    for (String name : ((EnumerablePropertySource<?>) source).getPropertyNames()) {
-                        if (name.startsWith("clipper.")) {
-                            String value = environment.getProperty(name);
-                            if (value != null) {
-                                if (isSensitiveKey(name)) {
-                                    properties.put(name, "[MASKED]");
-                                } else {
-                                    properties.put(name, value);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return properties;
-    }
+    public SortedMap<String, String> getNormalizedModelSchema() {
+        SortedMap<String, String> schema = new TreeMap<>();
+        
+        // 1. Storage
+        schema.put("storage.type", storageProperties.type());
+        schema.put("storage.local.root", storageProperties.local() != null ? storageProperties.local().root() : "null");
+        schema.put("storage.gcs.bucket", storageProperties.gcs() != null ? storageProperties.gcs().bucket() : "null");
+        
+        // 2. Queue
+        schema.put("queue.type", queueProperties.type());
+        schema.put("queue.redis.host", queueProperties.redis() != null ? queueProperties.redis().host() : "null");
+        schema.put("queue.redis.port", queueProperties.redis() != null && queueProperties.redis().port() != null ? String.valueOf(queueProperties.redis().port()) : "null");
+        schema.put("queue.redis.password", queueProperties.redis() != null && queueProperties.redis().password() != null && !queueProperties.redis().password().isBlank() ? "<secret>" : "null");
 
-    private boolean isSensitiveKey(String key) {
-        String lowerKey = key.toLowerCase();
-        for (String keyword : SENSITIVE_KEYWORDS) {
-            if (lowerKey.contains(keyword)) {
-                return true;
-            }
-        }
-        return false;
+        // 3. AI
+        schema.put("ai.gemini-model", aiProperties.geminiModel());
+        schema.put("ai.gemini-api-key", aiProperties.geminiApiKey() != null && !aiProperties.geminiApiKey().isBlank() ? "<secret>" : "null");
+        schema.put("ai.whisper.model", aiProperties.whisper() != null ? aiProperties.whisper().model() : "null");
+        schema.put("ai.whisper.python-path", aiProperties.whisper() != null ? aiProperties.whisper().pythonPath() : "null");
+
+        // 4. Telemetry
+        schema.put("telemetry.env", telemetryProperties.env());
+        schema.put("telemetry.otlp.endpoint", telemetryProperties.otlp() != null ? telemetryProperties.otlp().endpoint() : "null");
+        schema.put("telemetry.otlp.sampling-ratio", telemetryProperties.otlp() != null ? String.valueOf(telemetryProperties.otlp().samplingRatio()) : "null");
+
+        // 5. Security
+        schema.put("security.cors-enabled", String.valueOf(securityProperties.corsEnabled()));
+        schema.put("security.allowed-origins", securityProperties.allowedOrigins());
+
+        // 6. Worker
+        schema.put("worker.io-concurrency-limit", String.valueOf(workerProperties.ioConcurrencyLimit()));
+        schema.put("worker.cpu-concurrency-limit", String.valueOf(workerProperties.cpuConcurrencyLimit()));
+        schema.put("worker.gpu-concurrency-limit", String.valueOf(workerProperties.gpuConcurrencyLimit()));
+
+        return schema;
     }
 
     public String calculateFingerprint(Map<String, String> properties) {
         try {
-            // Filter out masked properties from fingerprint calculation to never include secrets
-            SortedMap<String, String> fingerprintProps = new TreeMap<>();
-            for (Map.Entry<String, String> entry : properties.entrySet()) {
-                if (!"[MASKED]".equals(entry.getValue())) {
-                    fingerprintProps.put(entry.getKey(), entry.getValue());
-                }
-            }
-
             StringBuilder sb = new StringBuilder();
-            for (Map.Entry<String, String> entry : fingerprintProps.entrySet()) {
-                sb.append(entry.getKey()).append("=").append(entry.getValue()).append("\n");
-            }
+            new TreeMap<>(properties).forEach((key, value) -> {
+                sb.append(key).append("=").append(value).append("\n");
+            });
 
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(sb.toString().getBytes(StandardCharsets.UTF_8));
