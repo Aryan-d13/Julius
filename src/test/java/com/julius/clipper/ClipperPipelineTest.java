@@ -66,6 +66,7 @@ public class ClipperPipelineTest {
         when(stringRedisTemplate.opsForValue().increment(anyString())).thenReturn(1L);
         when(stringRedisTemplate.opsForSet().add(anyString(), anyString())).thenReturn(1L);
         when(stringRedisTemplate.opsForSet().size(anyString())).thenReturn(2L); // Trigger Join Gate immediately
+        when(stringRedisTemplate.opsForStream().trim(any(), anyLong(), anyBoolean())).thenReturn(0L);
 
         // Stub the mocked workers to return appropriate result maps
         when(downloadWorker.process(any(Task.class))).thenAnswer(invocation -> {

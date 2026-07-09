@@ -22,13 +22,12 @@ public class SmartRenderWorker implements Worker {
     private static final Logger log = LoggerFactory.getLogger(SmartRenderWorker.class);
 
     private final VideoEditor videoEditor;
-    private final String outputDir;
+    private final com.julius.clipper.service.StorageClient storageClient;
 
     public SmartRenderWorker(VideoEditor videoEditor,
-                             @Value("${clipper.render.output.dir:data/jobs}") String outputDir) {
+                             com.julius.clipper.service.StorageClient storageClient) {
         this.videoEditor = videoEditor;
-        this.outputDir = outputDir;
-        new File(outputDir).mkdirs();
+        this.storageClient = storageClient;
     }
 
     @SuppressWarnings("unchecked")
@@ -54,50 +53,76 @@ public class SmartRenderWorker implements Worker {
         if (sourceVideoKey == null || sourceVideoKey.isBlank()) {
             throw new FileNotFoundException("Input video source key is unspecified in the payload.");
         }
-        File sourceVideoFile = new File(sourceVideoKey);
-        if (!sourceVideoFile.exists()) {
-            throw new FileNotFoundException("Input video file does not exist on disk: " + sourceVideoKey);
+
+        File tempSourceVideoFile = File.createTempFile("render_source_", ".mp4");
+        tempSourceVideoFile.deleteOnExit();
+
+        File tempCutFile = null;
+
+        try {
+            // Download the source video from cloud storage locally for processing
+            try (OutputStream out = new FileOutputStream(tempSourceVideoFile)) {
+                storageClient.download(sourceVideoKey, out);
+            }
+
+            // Generate output clip filename
+            String clipFilename = buildClipFilename(jobId, index, sourceTitle, templateRef);
+
+            // Perform video cut via VideoEditor process
+            String generatedFragmentPath = videoEditor.cutVideo(tempSourceVideoFile.getAbsolutePath(), start, end, clipFilename);
+            tempCutFile = new File(generatedFragmentPath);
+
+            // Size check validation (> 1KB)
+            if (!tempCutFile.exists() || tempCutFile.length() < 1024) {
+                long size = tempCutFile.exists() ? tempCutFile.length() : 0;
+                throw new RuntimeException("Generated clip size check failed: output is " + size + " bytes (expected > 1024 bytes).");
+            }
+
+            // Probed duration check via ffprobe (> 5 seconds)
+            double probedDuration = probeVideoDuration(tempCutFile.getAbsolutePath());
+            if (probedDuration < 5.0) {
+                throw new RuntimeException("Generated clip duration validation failed: output is " + probedDuration + " seconds (expected >= 5.0 seconds).");
+            }
+            if (probedDuration < duration * 0.5) {
+                log.warn("Generated clip duration mismatch: expected ~{}s, got {}s for clip {}", duration, probedDuration, tempCutFile.getName());
+            }
+
+            // Upload final clip to Storage
+            String targetClipKey = com.julius.clipper.service.StorageKeyBuilder.jobClip(jobId, index, templateRef);
+            log.info("Uploading final clip fragment to cloud storage: {}", targetClipKey);
+            try (InputStream in = new FileInputStream(tempCutFile)) {
+                storageClient.upload(new com.julius.clipper.service.UploadRequest(
+                    targetClipKey,
+                    in,
+                    tempCutFile.length(),
+                    "video/mp4",
+                    null,
+                    null
+                ));
+            }
+
+            // Generate secure signed URL for public download link (expires in 24 hours)
+            String signedUrl = storageClient.generateSignedUrl(targetClipKey, java.time.Duration.ofHours(24));
+
+            Map<String, Object> outputPayload = new HashMap<>();
+            outputPayload.put("index", index);
+            outputPayload.put("filename", clipFilename);
+            outputPayload.put("storage_key", targetClipKey);
+            outputPayload.put("url", signedUrl);
+            outputPayload.put("duration_seconds", probedDuration);
+            outputPayload.put("size_bytes", tempCutFile.length());
+
+            log.info("SmartRenderWorker completed successfully for clip #{}: {}, signedUrl={}", index, targetClipKey, signedUrl);
+            return outputPayload;
+
+        } finally {
+            if (tempSourceVideoFile.exists()) {
+                tempSourceVideoFile.delete();
+            }
+            if (tempCutFile != null && tempCutFile.exists()) {
+                tempCutFile.delete();
+            }
         }
-
-        // Generate output clip filename
-        String clipFilename = buildClipFilename(jobId, index, sourceTitle, templateRef);
-
-        Path destClipsDir = Paths.get(outputDir, jobId, "clips");
-        Files.createDirectories(destClipsDir);
-
-        // Perform video cut via VideoEditor process
-        String generatedFragmentPath = videoEditor.cutVideo(sourceVideoFile.getAbsolutePath(), start, end, clipFilename);
-        
-        Path destClipPath = destClipsDir.resolve(clipFilename);
-        Files.move(Paths.get(generatedFragmentPath), destClipPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-
-        File finalClipFile = destClipPath.toFile();
-
-        // Size check validation (> 1KB)
-        if (!finalClipFile.exists() || finalClipFile.length() < 1024) {
-            long size = finalClipFile.exists() ? finalClipFile.length() : 0;
-            throw new RuntimeException("Generated clip size check failed: output is " + size + " bytes (expected > 1024 bytes).");
-        }
-
-        // Probed duration check via ffprobe (> 5 seconds)
-        double probedDuration = probeVideoDuration(finalClipFile.getAbsolutePath());
-        if (probedDuration < 5.0) {
-            throw new RuntimeException("Generated clip duration validation failed: output is " + probedDuration + " seconds (expected >= 5.0 seconds).");
-        }
-        if (probedDuration < duration * 0.5) {
-            log.warn("Generated clip duration mismatch: expected ~{}s, got {}s for clip {}", duration, probedDuration, finalClipFile.getName());
-        }
-
-        Map<String, Object> outputPayload = new HashMap<>();
-        outputPayload.put("index", index);
-        outputPayload.put("filename", clipFilename);
-        outputPayload.put("storage_key", destClipPath.toAbsolutePath().toString());
-        outputPayload.put("url", "http://localhost:8080/data/jobs/" + jobId + "/clips/" + clipFilename);
-        outputPayload.put("duration_seconds", probedDuration);
-        outputPayload.put("size_bytes", finalClipFile.length());
-
-        log.info("SmartRenderWorker completed successfully for clip #{}: {}", index, destClipPath);
-        return outputPayload;
     }
 
     private double probeVideoDuration(String videoPath) {

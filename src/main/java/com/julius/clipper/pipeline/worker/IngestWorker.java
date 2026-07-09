@@ -23,18 +23,12 @@ public class IngestWorker implements Worker {
     private static final Logger log = LoggerFactory.getLogger(IngestWorker.class);
 
     private final MediaConverter converter;
-    private final String libraryVideoDir;
-    private final String libraryAudioDir;
+    private final com.julius.clipper.service.StorageClient storageClient;
 
     public IngestWorker(MediaConverter converter,
-                        @Value("${clipper.library.video.dir:data/library/videos}") String libraryVideoDir,
-                        @Value("${clipper.library.audio.dir:data/library/audios}") String libraryAudioDir) {
+                        com.julius.clipper.service.StorageClient storageClient) {
         this.converter = converter;
-        this.libraryVideoDir = libraryVideoDir;
-        this.libraryAudioDir = libraryAudioDir;
-
-        new File(libraryVideoDir).mkdirs();
-        new File(libraryAudioDir).mkdirs();
+        this.storageClient = storageClient;
     }
 
     @Override
@@ -42,51 +36,80 @@ public class IngestWorker implements Worker {
         String filePath = (String) task.getPayload().get("file_path");
         String userId = task.getUserId();
 
-        log.info("IngestWorker processing file: {}", filePath);
+        log.info("IngestWorker processing key: {}", filePath);
 
-        File inputFile = new File(filePath);
-        if (!inputFile.exists()) {
-            throw new FileNotFoundException("Local file for ingestion not found: " + filePath);
-        }
+        File tempInputFile = File.createTempFile("ingest_raw_", ".mp4");
+        tempInputFile.deleteOnExit();
 
-        // Generate SHA-256 hash for deduplication
-        String sha256Hash = calculateSHA256(inputFile);
-        String clipId = "file_" + sha256Hash.substring(0, 16);
-        log.info("Generated assets deduplication ID: {}", clipId);
+        try {
+            // Download user upload locally for processing
+            try (OutputStream out = new FileOutputStream(tempInputFile)) {
+                storageClient.download(filePath, out);
+            }
 
-        String originalExtension = getFileExtension(inputFile.getName(), ".mp4");
-        String outputVideoName = (userId != null ? userId + "_" : "") + clipId + originalExtension;
-        Path targetVideoPath = Paths.get(libraryVideoDir, outputVideoName);
+            // Generate SHA-256 hash for deduplication
+            String sha256Hash = calculateSHA256(tempInputFile);
+            String clipId = "file_" + sha256Hash.substring(0, 16);
+            log.info("Generated assets deduplication ID: {}", clipId);
 
-        if (!Files.exists(targetVideoPath)) {
-            log.info("Copying source file to library: {}", targetVideoPath);
-            Files.copy(inputFile.toPath(), targetVideoPath, StandardCopyOption.REPLACE_EXISTING);
-        } else {
-            log.info("Source file already matched by hash in library: {}", targetVideoPath);
-        }
+            String originalExtension = getFileExtension(filePath, ".mp4");
+            String targetVideoKey = com.julius.clipper.service.StorageKeyBuilder.libraryVideo(clipId, originalExtension, userId);
 
-        // Extract WAV audio via converter
-        String temporaryWavPath = converter.convertToWav(targetVideoPath.toString());
-        String outputAudioName = (userId != null ? userId + "_" : "") + clipId + ".wav";
-        Path targetAudioPath = Paths.get(libraryAudioDir, outputAudioName);
+            if (!storageClient.exists(targetVideoKey)) {
+                log.info("Uploading source file to library: {}", targetVideoKey);
+                try (InputStream in = new FileInputStream(tempInputFile)) {
+                    storageClient.upload(new com.julius.clipper.service.UploadRequest(
+                        targetVideoKey,
+                        in,
+                        tempInputFile.length(),
+                        "video/mp4",
+                        null,
+                        null
+                    ));
+                }
+            } else {
+                log.info("Source file already matched by hash in library: {}", targetVideoKey);
+            }
 
-        if (!Files.exists(targetAudioPath)) {
-            log.info("Moving processed audio to library: {}", targetAudioPath);
-            Files.move(Paths.get(temporaryWavPath), targetAudioPath, StandardCopyOption.REPLACE_EXISTING);
-        } else {
-            log.info("Processed audio track already matched by hash in library: {}", targetAudioPath);
+            // Extract WAV audio via converter
+            String temporaryWavPath = converter.convertToWav(tempInputFile.getAbsolutePath());
             File tempWavFile = new File(temporaryWavPath);
-            if (tempWavFile.exists()) {
-                tempWavFile.delete();
+            String targetAudioKey = com.julius.clipper.service.StorageKeyBuilder.libraryAudio(clipId, userId);
+
+            try {
+                if (!storageClient.exists(targetAudioKey)) {
+                    log.info("Uploading processed audio to library: {}", targetAudioKey);
+                    try (InputStream in = new FileInputStream(tempWavFile)) {
+                        storageClient.upload(new com.julius.clipper.service.UploadRequest(
+                            targetAudioKey,
+                            in,
+                            tempWavFile.length(),
+                            "audio/wav",
+                            null,
+                            null
+                        ));
+                    }
+                } else {
+                    log.info("Processed audio track already matched by hash in library: {}", targetAudioKey);
+                }
+            } finally {
+                if (tempWavFile.exists()) {
+                    tempWavFile.delete();
+                }
+            }
+
+            Map<String, Object> outputPayload = new HashMap<>();
+            outputPayload.put("video_key", targetVideoKey);
+            outputPayload.put("storage_key", targetAudioKey);
+            outputPayload.put("clip_id", clipId);
+
+            return outputPayload;
+
+        } finally {
+            if (tempInputFile.exists()) {
+                tempInputFile.delete();
             }
         }
-
-        Map<String, Object> outputPayload = new HashMap<>();
-        outputPayload.put("video_key", targetVideoPath.toAbsolutePath().toString());
-        outputPayload.put("storage_key", targetAudioPath.toAbsolutePath().toString());
-        outputPayload.put("clip_id", clipId);
-
-        return outputPayload;
     }
 
     private String calculateSHA256(File file) throws Exception {

@@ -14,6 +14,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
+import java.io.InputStream;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -29,13 +32,16 @@ public class DownloadWorker implements Worker {
     private final MediaConverter converter;
     private final JobRepository jobRepository;
     private final DistributedLockManager lockManager;
+    private final com.julius.clipper.service.StorageClient storageClient;
 
     public DownloadWorker(YouTubeDownloader downloader, MediaConverter converter, 
-                          JobRepository jobRepository, DistributedLockManager lockManager) {
+                          JobRepository jobRepository, DistributedLockManager lockManager,
+                          com.julius.clipper.service.StorageClient storageClient) {
         this.downloader = downloader;
         this.converter = converter;
         this.jobRepository = jobRepository;
         this.lockManager = lockManager;
+        this.storageClient = storageClient;
     }
 
     @Override
@@ -102,8 +108,13 @@ public class DownloadWorker implements Worker {
             if (isVideoTask) {
                 String targetFilename = "source_video_" + clipId;
                 String downloadedVideoPath = downloader.downloadVideo(url, targetFilename);
-                outputPayload.put("video_key", downloadedVideoPath);
-                log.info("Video download finished successfully: {}", downloadedVideoPath);
+                String storageKey = com.julius.clipper.service.StorageKeyBuilder.rawVideo(clipId);
+                
+                log.info("Uploading video to cloud storage: {}", storageKey);
+                uploadAndDeleteLocalFile(storageKey, downloadedVideoPath, "video/mp4");
+                
+                outputPayload.put("video_key", storageKey);
+                log.info("Video download and upload finished successfully: {}", storageKey);
             } else {
                 String targetFilename = "source_audio_" + clipId;
                 String downloadedAudioPath = downloader.downloadAudio(url, targetFilename);
@@ -115,13 +126,41 @@ public class DownloadWorker implements Worker {
                     log.debug("Cleaned up intermediate raw audio track file: {}", downloadedAudioPath);
                 }
 
-                outputPayload.put("storage_key", transcodedWavPath);
-                log.info("Audio download and WAV transcoding finished: {}", transcodedWavPath);
+                String storageKey = com.julius.clipper.service.StorageKeyBuilder.rawAudio(clipId);
+                
+                log.info("Uploading audio to cloud storage: {}", storageKey);
+                uploadAndDeleteLocalFile(storageKey, transcodedWavPath, "audio/wav");
+
+                outputPayload.put("storage_key", storageKey);
+                log.info("Audio download, WAV transcoding, and upload finished: {}", storageKey);
             }
 
             return outputPayload;
         } finally {
             lockManager.releaseLock(lockKey, ownerId);
+        }
+    }
+
+    private com.julius.clipper.service.StoredObject uploadAndDeleteLocalFile(String key, String localPath, String contentType) throws Exception {
+        File file = new File(localPath);
+        if (!file.exists()) {
+            throw new FileNotFoundException("Local file not found for storage upload: " + localPath);
+        }
+        try (InputStream in = new FileInputStream(file)) {
+            com.julius.clipper.service.UploadRequest request = new com.julius.clipper.service.UploadRequest(
+                key,
+                in,
+                file.length(),
+                contentType,
+                null,
+                null
+            );
+            return storageClient.upload(request);
+        } finally {
+            if (file.exists()) {
+                file.delete();
+                log.debug("Deleted temporary local file after storage upload: {}", localPath);
+            }
         }
     }
 
