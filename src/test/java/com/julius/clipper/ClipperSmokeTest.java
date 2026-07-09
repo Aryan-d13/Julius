@@ -6,6 +6,7 @@ import com.julius.clipper.domain.dto.JobConfig;
 import com.julius.clipper.pipeline.WorkerRunner;
 import com.julius.clipper.repository.JobClipRepository;
 import com.julius.clipper.repository.JobRepository;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("live")
+@Tag("integration")
 public class ClipperSmokeTest {
 
     private static final Logger log = LoggerFactory.getLogger(ClipperSmokeTest.class);

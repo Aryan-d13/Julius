@@ -33,8 +33,20 @@ public class ClipperPipelineTest {
     @MockBean
     private RedisConnectionFactory redisConnectionFactory;
 
-    @MockBean
+    @MockBean(answer = org.mockito.Answers.RETURNS_DEEP_STUBS)
     private StringRedisTemplate stringRedisTemplate;
+
+    @MockBean(name = "DOWNLOADWorker")
+    private com.julius.clipper.pipeline.Worker downloadWorker;
+
+    @MockBean(name = "TRANSCRIBEWorker")
+    private com.julius.clipper.pipeline.Worker transcribeWorker;
+
+    @MockBean(name = "ANALYZEWorker")
+    private com.julius.clipper.pipeline.Worker analyzeWorker;
+
+    @MockBean(name = "SMART_RENDERWorker")
+    private com.julius.clipper.pipeline.Worker smartRenderWorker;
 
     @Autowired
     private JobRepository jobRepository;
@@ -54,6 +66,38 @@ public class ClipperPipelineTest {
         when(stringRedisTemplate.opsForValue().increment(anyString())).thenReturn(1L);
         when(stringRedisTemplate.opsForSet().add(anyString(), anyString())).thenReturn(1L);
         when(stringRedisTemplate.opsForSet().size(anyString())).thenReturn(2L); // Trigger Join Gate immediately
+
+        // Stub the mocked workers to return appropriate result maps
+        when(downloadWorker.process(any(Task.class))).thenAnswer(invocation -> {
+            Task task = invocation.getArgument(0);
+            if (task.getType() == TaskType.DOWNLOAD_VIDEO) {
+                return Map.of("video_key", "mock_video.mp4");
+            } else {
+                return Map.of("clip_id", "dQw4w9WgXcQ", "storage_key", "mock_audio.wav");
+            }
+        });
+
+        when(transcribeWorker.process(any(Task.class))).thenReturn(Map.of(
+            "clip_id", "dQw4w9WgXcQ",
+            "transcript_key", "mock_transcript.json"
+        ));
+
+        when(analyzeWorker.process(any(Task.class))).thenReturn(Map.of(
+            "analysis_results_cache", "mock_analysis_results_cache"
+        ));
+
+        when(smartRenderWorker.process(any(Task.class))).thenAnswer(invocation -> {
+            Task task = invocation.getArgument(0);
+            String jId = task.getJobId();
+            return Map.of(
+                "index", 1,
+                "filename", "clip-01_untitled-source_template_" + jId.substring(0, Math.min(jId.length(), 8)) + ".mp4",
+                "storage_key", "mock-rendered-clip.mp4",
+                "url", "http://localhost:8080/data/jobs/" + jId + "/clips/clip.mp4",
+                "duration_seconds", 30.0,
+                "size_bytes", 2048L
+            );
+        });
 
         // 1. Create a mock Job
         String jobId = UUID.randomUUID().toString();
