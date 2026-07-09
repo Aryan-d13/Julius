@@ -22,8 +22,8 @@ public class MediaConverter {
 
     private final String outputDir;
 
-    public MediaConverter(@Value("${clipper.convert.dir:data/temp/converted}") String outputDir) {
-        this.outputDir = outputDir;
+    public MediaConverter(com.julius.clipper.config.properties.WorkspaceProperties workspaceProperties) {
+        this.outputDir = workspaceProperties.convertDir();
         File dir = new File(outputDir);
         if (!dir.exists()) {
             dir.mkdirs();

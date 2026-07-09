@@ -26,13 +26,10 @@ public class YouTubeDownloader {
     private final String ytdlpFormat;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public YouTubeDownloader(
-            @Value("${clipper.download.dir:data/temp/downloads}") String outputDir,
-            @Value("${youtube.cookies.path:}") String cookiesPath,
-            @Value("${ytdlp.format:bestvideo[height<=720]+bestaudio/best}") String ytdlpFormat) {
-        this.outputDir = outputDir;
-        this.cookiesPath = cookiesPath;
-        this.ytdlpFormat = ytdlpFormat;
+    public YouTubeDownloader(com.julius.clipper.config.properties.DownloadProperties downloadProperties) {
+        this.outputDir = downloadProperties.dir();
+        this.cookiesPath = downloadProperties.cookiesPath();
+        this.ytdlpFormat = downloadProperties.format();
 
         File dir = new File(outputDir);
         if (!dir.exists()) {

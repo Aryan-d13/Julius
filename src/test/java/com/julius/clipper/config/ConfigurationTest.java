@@ -24,7 +24,7 @@ public class ConfigurationTest {
         // Invalid worker concurrency (below 1)
         WorkerProperties workerProps = new WorkerProperties(0, 2, 1);
         ConfigurationValidator configValidator = new ConfigurationValidator(
-                null, null, null, null, null, workerProps,
+                null, null, null, null, null, workerProps, null, null,
                 storageValidator, queueValidator, beanValidator
         );
 
@@ -86,12 +86,14 @@ public class ConfigurationTest {
 
         StorageProperties storage = new StorageProperties("local", new StorageProperties.Local("data/storage"), null);
         QueueProperties queue = new QueueProperties("db", new QueueProperties.Redis("localhost", 6379, "super-secret-password"));
-        AiProperties ai = new AiProperties("secret-key-123", "gemini-1.5-flash", new AiProperties.Whisper("large-v3-turbo", "python"));
+        AiProperties ai = new AiProperties("secret-key-123", "gemini-1.5-flash", new AiProperties.Whisper("large-v3-turbo", "python", ""));
         TelemetryProperties telemetry = new TelemetryProperties("test", new TelemetryProperties.Otlp("http://localhost", 1.0));
         SecurityProperties security = new SecurityProperties(false, "*");
         WorkerProperties worker = new WorkerProperties(8, 2, 1);
+        DownloadProperties download = new DownloadProperties("dir", "", "format");
+        WorkspaceProperties workspace = new WorkspaceProperties("d", "d", "d", "d", "d", "d", "d");
 
-        ConfigurationSummaryLogger logger = new ConfigurationSummaryLogger(env, storage, queue, ai, telemetry, security, worker, null);
+        ConfigurationSummaryLogger logger = new ConfigurationSummaryLogger(env, storage, queue, ai, telemetry, security, worker, download, workspace, null);
 
         SortedMap<String, String> schema1 = logger.getNormalizedModelSchema();
         assertThat(schema1.get("ai.gemini-api-key")).isEqualTo("<secret>");
@@ -103,9 +105,9 @@ public class ConfigurationTest {
         
         // Change secret values only (should NOT change fingerprint because both are represented by '<secret>')
         QueueProperties queueDifferentPass = new QueueProperties("db", new QueueProperties.Redis("localhost", 6379, "different-password"));
-        AiProperties aiDifferentKey = new AiProperties("different-key", "gemini-1.5-flash", new AiProperties.Whisper("large-v3-turbo", "python"));
+        AiProperties aiDifferentKey = new AiProperties("different-key", "gemini-1.5-flash", new AiProperties.Whisper("large-v3-turbo", "python", ""));
         
-        ConfigurationSummaryLogger logger2 = new ConfigurationSummaryLogger(env, storage, queueDifferentPass, aiDifferentKey, telemetry, security, worker, null);
+        ConfigurationSummaryLogger logger2 = new ConfigurationSummaryLogger(env, storage, queueDifferentPass, aiDifferentKey, telemetry, security, worker, download, workspace, null);
         SortedMap<String, String> schema2 = logger2.getNormalizedModelSchema();
         String fp2 = logger2.calculateFingerprint(schema2);
 
@@ -114,7 +116,7 @@ public class ConfigurationTest {
 
         // Remove secret (should change fingerprint because key goes from '<secret>' to 'null')
         QueueProperties queueNoPass = new QueueProperties("db", new QueueProperties.Redis("localhost", 6379, null));
-        ConfigurationSummaryLogger logger3 = new ConfigurationSummaryLogger(env, storage, queueNoPass, aiDifferentKey, telemetry, security, worker, null);
+        ConfigurationSummaryLogger logger3 = new ConfigurationSummaryLogger(env, storage, queueNoPass, aiDifferentKey, telemetry, security, worker, download, workspace, null);
         SortedMap<String, String> schema3 = logger3.getNormalizedModelSchema();
         String fp3 = logger3.calculateFingerprint(schema3);
 

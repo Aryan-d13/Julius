@@ -22,8 +22,8 @@ public class VideoEditor {
 
     private final String outputDir;
 
-    public VideoEditor(@Value("${clipper.cut.dir:data/temp/fragments}") String outputDir) {
-        this.outputDir = outputDir;
+    public VideoEditor(com.julius.clipper.config.properties.WorkspaceProperties workspaceProperties) {
+        this.outputDir = workspaceProperties.cutDir();
         File dir = new File(outputDir);
         if (!dir.exists()) {
             dir.mkdirs();

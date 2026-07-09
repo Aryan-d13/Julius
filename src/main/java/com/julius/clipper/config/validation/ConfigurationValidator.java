@@ -12,6 +12,8 @@ public class ConfigurationValidator {
     private final TelemetryProperties telemetryProperties;
     private final SecurityProperties securityProperties;
     private final WorkerProperties workerProperties;
+    private final DownloadProperties downloadProperties;
+    private final WorkspaceProperties workspaceProperties;
     
     private final StoragePropertiesValidator storagePropertiesValidator;
     private final QueuePropertiesValidator queuePropertiesValidator;
@@ -24,6 +26,8 @@ public class ConfigurationValidator {
             TelemetryProperties telemetryProperties,
             SecurityProperties securityProperties,
             WorkerProperties workerProperties,
+            DownloadProperties downloadProperties,
+            WorkspaceProperties workspaceProperties,
             StoragePropertiesValidator storagePropertiesValidator,
             QueuePropertiesValidator queuePropertiesValidator,
             BeanValidator beanValidator) {
@@ -33,6 +37,8 @@ public class ConfigurationValidator {
         this.telemetryProperties = telemetryProperties;
         this.securityProperties = securityProperties;
         this.workerProperties = workerProperties;
+        this.downloadProperties = downloadProperties;
+        this.workspaceProperties = workspaceProperties;
         this.storagePropertiesValidator = storagePropertiesValidator;
         this.queuePropertiesValidator = queuePropertiesValidator;
         this.beanValidator = beanValidator;
@@ -46,6 +52,8 @@ public class ConfigurationValidator {
         beanValidator.validate(telemetryProperties, "clipper.telemetry");
         beanValidator.validate(securityProperties, "clipper.security");
         beanValidator.validate(workerProperties, "clipper.worker");
+        beanValidator.validate(downloadProperties, "clipper.download");
+        beanValidator.validate(workspaceProperties, "clipper.workspace");
 
         // 2. Custom conditional validations
         if (storageProperties != null) {

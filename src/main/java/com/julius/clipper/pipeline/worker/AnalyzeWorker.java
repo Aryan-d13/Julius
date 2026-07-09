@@ -28,9 +28,9 @@ public class AnalyzeWorker implements Worker {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AnalyzeWorker(GeminiService geminiService,
-                         @Value("${clipper.cache.dir:data/library/cache}") String cacheDir) {
+                         com.julius.clipper.config.properties.WorkspaceProperties workspaceProperties) {
         this.geminiService = geminiService;
-        this.cacheDir = cacheDir;
+        this.cacheDir = workspaceProperties.cacheDir();
         new File(cacheDir).mkdirs();
     }
 

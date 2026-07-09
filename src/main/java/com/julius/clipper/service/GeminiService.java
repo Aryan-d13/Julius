@@ -31,11 +31,10 @@ public class GeminiService {
     private final AiMetrics aiMetrics;
 
     public GeminiService(
-            @Value("${google.api.key:}") String apiKey,
-            @Value("${gemini.model:gemini-1.5-flash}") String modelName,
+            com.julius.clipper.config.properties.AiProperties aiProperties,
             AiMetrics aiMetrics) {
-        this.apiKey = apiKey;
-        this.modelName = modelName;
+        this.apiKey = aiProperties.geminiApiKey();
+        this.modelName = aiProperties.geminiModel();
         this.aiMetrics = aiMetrics;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))

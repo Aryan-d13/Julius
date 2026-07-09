@@ -13,6 +13,7 @@ public record AiProperties(
 ) {
     public record Whisper(
         @NotBlank String model,
-        @NotBlank String pythonPath
+        @NotBlank String pythonPath,
+        String pythonEnv
     ) {}
 }

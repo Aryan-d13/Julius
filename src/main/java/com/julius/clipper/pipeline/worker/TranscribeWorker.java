@@ -41,15 +41,13 @@ public class TranscribeWorker implements Worker {
     private final AiMetrics aiMetrics;
 
     public TranscribeWorker(SegmentMerger segmentMerger,
-                            @Value("${clipper.python.path}") String pythonPath,
-                            @Value("${clipper.python.env}") String pythonPathEnv,
-                            @Value("${clipper.whisper.model:large-v3-turbo}") String whisperModel,
+                            com.julius.clipper.config.properties.AiProperties aiProperties,
                             com.julius.clipper.service.StorageClient storageClient,
                             AiMetrics aiMetrics) {
         this.segmentMerger = segmentMerger;
-        this.pythonPath = pythonPath;
-        this.pythonPathEnv = pythonPathEnv;
-        this.whisperModel = whisperModel;
+        this.pythonPath = aiProperties.whisper().pythonPath();
+        this.pythonPathEnv = aiProperties.whisper().pythonEnv();
+        this.whisperModel = aiProperties.whisper().model();
         this.storageClient = storageClient;
         this.aiMetrics = aiMetrics;
     }

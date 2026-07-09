@@ -1,9 +1,9 @@
 package com.julius.clipper.config;
 
+import com.julius.clipper.config.properties.QueueProperties;
 import com.julius.clipper.pipeline.DbQueue;
 import com.julius.clipper.pipeline.QueueProvider;
 import com.julius.clipper.pipeline.RedisQueue;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -11,13 +11,16 @@ import org.springframework.context.annotation.Primary;
 @Configuration
 public class QueueConfig {
 
-    @Value("${clipper.queue.type:db}")
-    private String queueType;
+    private final QueueProperties queueProperties;
+
+    public QueueConfig(QueueProperties queueProperties) {
+        this.queueProperties = queueProperties;
+    }
 
     @Bean
     @Primary
     public QueueProvider queueProvider(RedisQueue redisQueue, DbQueue dbQueue) {
-        if ("redis".equalsIgnoreCase(queueType)) {
+        if ("redis".equalsIgnoreCase(queueProperties.type())) {
             return redisQueue;
         }
         return dbQueue;

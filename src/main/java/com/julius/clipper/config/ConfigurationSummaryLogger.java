@@ -25,6 +25,8 @@ public class ConfigurationSummaryLogger implements InitializingBean {
     private final TelemetryProperties telemetryProperties;
     private final SecurityProperties securityProperties;
     private final WorkerProperties workerProperties;
+    private final DownloadProperties downloadProperties;
+    private final WorkspaceProperties workspaceProperties;
     
     private final BuildProperties buildProperties;
 
@@ -36,6 +38,8 @@ public class ConfigurationSummaryLogger implements InitializingBean {
             TelemetryProperties telemetryProperties,
             SecurityProperties securityProperties,
             WorkerProperties workerProperties,
+            DownloadProperties downloadProperties,
+            WorkspaceProperties workspaceProperties,
             @Autowired(required = false) BuildProperties buildProperties) {
         this.environment = environment;
         this.storageProperties = storageProperties;
@@ -44,6 +48,8 @@ public class ConfigurationSummaryLogger implements InitializingBean {
         this.telemetryProperties = telemetryProperties;
         this.securityProperties = securityProperties;
         this.workerProperties = workerProperties;
+        this.downloadProperties = downloadProperties;
+        this.workspaceProperties = workspaceProperties;
         this.buildProperties = buildProperties;
     }
 
@@ -98,6 +104,17 @@ public class ConfigurationSummaryLogger implements InitializingBean {
         schema.put("storage.local.root", storageProperties.local() != null ? storageProperties.local().root() : "null");
         schema.put("storage.gcs.bucket", storageProperties.gcs() != null ? storageProperties.gcs().bucket() : "null");
         
+        // Workspace Directories
+        if (workspaceProperties != null) {
+            schema.put("workspace.download-dir", workspaceProperties.downloadDir());
+            schema.put("workspace.convert-dir", workspaceProperties.convertDir());
+            schema.put("workspace.cut-dir", workspaceProperties.cutDir());
+            schema.put("workspace.cache-dir", workspaceProperties.cacheDir());
+            schema.put("workspace.video-library-dir", workspaceProperties.videoLibraryDir());
+            schema.put("workspace.audio-library-dir", workspaceProperties.audioLibraryDir());
+            schema.put("workspace.render-output-dir", workspaceProperties.renderOutputDir());
+        }
+        
         // 2. Queue
         schema.put("queue.type", queueProperties.type());
         schema.put("queue.redis.host", queueProperties.redis() != null ? queueProperties.redis().host() : "null");
@@ -109,6 +126,7 @@ public class ConfigurationSummaryLogger implements InitializingBean {
         schema.put("ai.gemini-api-key", aiProperties.geminiApiKey() != null && !aiProperties.geminiApiKey().isBlank() ? "<secret>" : "null");
         schema.put("ai.whisper.model", aiProperties.whisper() != null ? aiProperties.whisper().model() : "null");
         schema.put("ai.whisper.python-path", aiProperties.whisper() != null ? aiProperties.whisper().pythonPath() : "null");
+        schema.put("ai.whisper.python-env", aiProperties.whisper() != null && aiProperties.whisper().pythonEnv() != null ? aiProperties.whisper().pythonEnv() : "null");
 
         // 4. Telemetry
         schema.put("telemetry.env", telemetryProperties.env());
@@ -123,6 +141,13 @@ public class ConfigurationSummaryLogger implements InitializingBean {
         schema.put("worker.io-concurrency-limit", String.valueOf(workerProperties.ioConcurrencyLimit()));
         schema.put("worker.cpu-concurrency-limit", String.valueOf(workerProperties.cpuConcurrencyLimit()));
         schema.put("worker.gpu-concurrency-limit", String.valueOf(workerProperties.gpuConcurrencyLimit()));
+
+        // 7. Download
+        if (downloadProperties != null) {
+            schema.put("download.dir", downloadProperties.dir());
+            schema.put("download.cookies-path", downloadProperties.cookiesPath() != null && !downloadProperties.cookiesPath().isBlank() ? downloadProperties.cookiesPath() : "null");
+            schema.put("download.format", downloadProperties.format());
+        }
 
         return schema;
     }
