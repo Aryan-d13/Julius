@@ -88,7 +88,7 @@ public class ConfigurationTest {
         QueueProperties queue = new QueueProperties("db", new QueueProperties.Redis("localhost", 6379, "super-secret-password"));
         AiProperties ai = new AiProperties("secret-key-123", "gemini-1.5-flash", new AiProperties.Whisper("large-v3-turbo", "python", ""));
         TelemetryProperties telemetry = new TelemetryProperties("test", new TelemetryProperties.Otlp("http://localhost", 1.0));
-        SecurityProperties security = new SecurityProperties(false, "*");
+        SecurityProperties security = new SecurityProperties(false, "*", new SecurityProperties.Jwt("Y2xpcHBlci1zZWN1cml0eS1qd3Qtc2VjcmV0LWtleS1kZXYtcGxhdGZvcm0tc3VwZXItc3Ryb25nLWtleQ==", 900000, 604800000));
         WorkerProperties worker = new WorkerProperties(8, 2, 1);
         DownloadProperties download = new DownloadProperties("dir", "", "format");
         WorkspaceProperties workspace = new WorkspaceProperties("d", "d", "d", "d", "d", "d", "d");
@@ -99,6 +99,7 @@ public class ConfigurationTest {
         SortedMap<String, String> schema1 = logger.getNormalizedModelSchema();
         assertThat(schema1.get("ai.gemini-api-key")).isEqualTo("<secret>");
         assertThat(schema1.get("queue.redis.password")).isEqualTo("<secret>");
+        assertThat(schema1.get("security.jwt.secret")).isEqualTo("<secret>");
         assertThat(schema1.get("ai.gemini-model")).isEqualTo("gemini-1.5-flash");
         assertThat(schema1.get("features.new-ui-enabled")).isEqualTo("true");
 

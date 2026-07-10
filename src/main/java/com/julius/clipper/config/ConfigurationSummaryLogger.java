@@ -137,10 +137,15 @@ public class ConfigurationSummaryLogger implements InitializingBean {
         schema.put("telemetry.otlp.sampling-ratio", telemetryProperties.otlp() != null ? String.valueOf(telemetryProperties.otlp().samplingRatio()) : "null");
 
         // 5. Security
-        schema.put("security.cors-enabled", String.valueOf(securityProperties.corsEnabled()));
-        schema.put("security.allowed-origins", securityProperties.allowedOrigins());
-
-        // 6. Worker
+        if (securityProperties != null) {
+            schema.put("security.cors-enabled", String.valueOf(securityProperties.corsEnabled()));
+            schema.put("security.allowed-origins", securityProperties.allowedOrigins());
+            if (securityProperties.jwt() != null) {
+                schema.put("security.jwt.secret", securityProperties.jwt().secret() != null && !securityProperties.jwt().secret().isBlank() ? "<secret>" : "null");
+                schema.put("security.jwt.access-expiry-ms", String.valueOf(securityProperties.jwt().accessExpiryMs()));
+                schema.put("security.jwt.refresh-expiry-ms", String.valueOf(securityProperties.jwt().refreshExpiryMs()));
+            }
+        }  // 6. Worker
         schema.put("worker.io-concurrency-limit", String.valueOf(workerProperties.ioConcurrencyLimit()));
         schema.put("worker.cpu-concurrency-limit", String.valueOf(workerProperties.cpuConcurrencyLimit()));
         schema.put("worker.gpu-concurrency-limit", String.valueOf(workerProperties.gpuConcurrencyLimit()));
