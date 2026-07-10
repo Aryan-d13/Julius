@@ -27,6 +27,7 @@ public class AuthService {
     private final TokenIssuer tokenIssuer;
     private final SecurityProperties securityProperties;
     private final List<OAuth2UserProvider> oauthProviders;
+    private final String dummyPasswordHash;
 
     public AuthService(
             UserRepository userRepository,
@@ -47,6 +48,8 @@ public class AuthService {
         this.tokenIssuer = tokenIssuer;
         this.securityProperties = securityProperties;
         this.oauthProviders = oauthProviders;
+        // Pre-compute dummy hash at startup to prevent user enumeration timing attacks
+        this.dummyPasswordHash = passwordEncoder.encode("dummy-password-for-sidechannel-enumeration-mitigation");
     }
 
     @Transactional
@@ -73,9 +76,16 @@ public class AuthService {
         long startTime = System.currentTimeMillis();
         Optional<User> userOpt = userRepository.findByEmail(email);
 
-        if (userOpt.isEmpty() || userOpt.get().getPasswordHash() == null ||
-                !passwordEncoder.matches(password, userOpt.get().getPasswordHash())) {
-            
+        boolean userExists = userOpt.isPresent();
+        // Match user hash OR fall back to pre-computed dummy hash to match execution timing signature
+        String hashToMatch = userExists ? userOpt.get().getPasswordHash() : dummyPasswordHash;
+        
+        boolean passwordMatches = false;
+        if (hashToMatch != null) {
+            passwordMatches = passwordEncoder.matches(password, hashToMatch);
+        }
+
+        if (!userExists || !passwordMatches) {
             logAudit(null, null, email, "LOGIN_FAILED", ip, userAgent, "Invalid credentials", correlationId, requestId, startTime);
             throw new IllegalArgumentException("Invalid email or password");
         }
@@ -154,7 +164,18 @@ public class AuthService {
         // Detect refresh token reuse theft: matches previousTokenHash or is already revoked or expired
         boolean isReuse = incomingHash.equals(session.getPreviousTokenHash());
         if (isReuse || session.isRevoked() || session.getExpiresAt().isBefore(LocalDateTime.now())) {
-            // Breach detection: revoke all sessions belonging to this user
+            
+            // Mitigate race conditions: if incoming matches previous token hash, check a short 10s grace window
+            if (isReuse) {
+                boolean withinGracePeriod = session.getLastUsedAt().plusSeconds(10).isAfter(LocalDateTime.now());
+                if (withinGracePeriod) {
+                    logAudit(session.getUser().getId(), session.getId(), session.getUser().getEmail(),
+                             "CONCURRENT_REFRESH_GLITCH", ip, userAgent, "Concurrent refresh request within grace period", correlationId, requestId, startTime);
+                    throw new IllegalArgumentException("Concurrent refresh request. Please retry.");
+                }
+            }
+
+            // Real theft / expired -> Invalidate session tree as threat countermeasure
             List<UserSession> activeSessions = sessionRepository.findByUserIdAndRevokedFalse(session.getUser().getId());
             activeSessions.forEach(s -> s.setRevoked(true));
             sessionRepository.saveAll(activeSessions);
@@ -205,6 +226,11 @@ public class AuthService {
         });
     }
 
+    /**
+     * Creates session and issues tokens.
+     * Note: Refresh tokens generated via tokenIssuer are cryptographically secure random bytes
+     * (providing at least 256 bits of entropy) Base64 encoded.
+     */
     private AuthResponse createSessionAndIssueTokens(User user, String ip, String userAgent, String correlationId, String requestId, long startTime, String eventType) {
         String sessionId = UUID.randomUUID().toString();
         String refreshTokenValue = tokenIssuer.issueRefreshToken();

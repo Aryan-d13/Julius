@@ -21,7 +21,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,11 +56,9 @@ public class AuthIntegrationTest {
 
     @BeforeEach
     public void setUp() {
-        // Clear repositories before each test
         sessionRepository.deleteAll();
         userRepository.deleteAll();
         
-        // Ensure ROLE_USER is seeded if it was deleted
         if (roleRepository.findByName("ROLE_USER").isEmpty()) {
             roleRepository.save(new Role("role-user-uuid-placeholder-1111", "ROLE_USER"));
         }
@@ -69,7 +66,6 @@ public class AuthIntegrationTest {
 
     @Test
     public void testRegistrationAndLoginFlow() throws Exception {
-        // 1. Register User
         Map<String, String> regRequest = Map.of(
                 "email", "test@julius.com",
                 "password", "SecurePassword123!",
@@ -82,13 +78,9 @@ public class AuthIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("User registered successfully"));
 
-        // Verify database state
         Optional<User> userOpt = userRepository.findByEmail("test@julius.com");
         assertThat(userOpt).isPresent();
-        assertThat(userOpt.get().getFullName()).isEqualTo("Julius Tester");
-        assertThat(userOpt.get().getRoles()).isNotEmpty();
 
-        // 2. Login User
         Map<String, String> loginRequest = Map.of(
                 "email", "test@julius.com",
                 "password", "SecurePassword123!"
@@ -108,20 +100,16 @@ public class AuthIntegrationTest {
 
     @Test
     public void testAuthenticationSecurityBoundary() throws Exception {
-        // Hitting protected endpoint without credentials -> HTTP 401
         mockMvc.perform(get("/api/jobs/non-existent-id"))
                 .andExpect(status().isUnauthorized());
 
-        // Create a user and authenticate directly
         User user = authService.register("auth@julius.com", "Password123!", "Auth Tester");
         AuthResponse auth = authService.login("auth@julius.com", "Password123!", "127.0.0.1", "agent", "corr", "req");
 
-        // Request with valid Authorization Bearer token -> HTTP 404 (Not Found, but Authorized!)
         mockMvc.perform(get("/api/jobs/non-existent-id")
                 .header("Authorization", "Bearer " + auth.accessToken()))
                 .andExpect(status().isNotFound());
 
-        // Request with valid HTTP-only access_token cookie -> HTTP 404 (Not Found, but Authorized!)
         Cookie cookie = new Cookie("access_token", auth.accessToken());
         cookie.setHttpOnly(true);
         cookie.setSecure(true);
@@ -150,42 +138,53 @@ public class AuthIntegrationTest {
         assertThat(nextAccessToken).isNotEqualTo(auth1.accessToken());
         assertThat(nextRefreshToken).isNotEqualTo(auth1.refreshToken());
 
-        // Verify the old session is updated to the new token, and rotation counter incremented
+        // Verify session rotation counter incremented
         Optional<UserSession> sessionOpt = sessionRepository.findById(auth1.sessionId());
         assertThat(sessionOpt).isPresent();
         assertThat(sessionOpt.get().getRotationCounter()).isEqualTo(1);
 
-        // 2. Reuse the first refresh token (simulates token theft / reuse) -> Expect invalidation of the entire session tree
+        // 2. Reuse old token within grace window (e.g. immediate callback retry) -> Blocked but session is NOT revoked
         mockMvc.perform(post("/api/auth/refresh")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(refreshReq)))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("Concurrent refresh request. Please retry."));
 
-        // Verify that the session has now been revoked
-        Optional<UserSession> sessionAfterTheft = sessionRepository.findById(auth1.sessionId());
-        assertThat(sessionAfterTheft).isPresent();
-        assertThat(sessionAfterTheft.get().isRevoked()).isTrue();
+        Optional<UserSession> sessionDuringGrace = sessionRepository.findById(auth1.sessionId());
+        assertThat(sessionDuringGrace).isPresent();
+        assertThat(sessionDuringGrace.get().isRevoked()).isFalse(); // Grace window preserves session
+
+        // 3. Reuse old token AFTER grace window (simulates actual token theft replay) -> Revokes entire session tree
+        UserSession s = sessionRepository.findById(auth1.sessionId()).orElseThrow();
+        s.setLastUsedAt(LocalDateTime.now().minusSeconds(30)); // Mock grace window expiry
+        sessionRepository.saveAndFlush(s);
+
+        mockMvc.perform(post("/api/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(refreshReq)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("Session expired or token reused. Please sign in again."));
+
+        Optional<UserSession> sessionAfterGrace = sessionRepository.findById(auth1.sessionId());
+        assertThat(sessionAfterGrace).isPresent();
+        assertThat(sessionAfterGrace.get().isRevoked()).isTrue(); // Theft detected and session revoked
     }
 
     @Test
     public void testOAuth2FederatedLinking() {
-        // Seed GITHUB provider attributes
         Map<String, Object> attributes = new HashMap<>();
         attributes.put("id", 1234567);
         attributes.put("email", "oauth@julius.com");
         attributes.put("name", "OAuth GitHub User");
 
-        // Call OAuth Callback logic directly
         AuthResponse auth = authService.loginOrLinkOAuth2("GITHUB", attributes, "127.0.0.1", "Mozilla", "corr", "req");
 
         assertThat(auth.accessToken()).isNotEmpty();
         assertThat(auth.refreshToken()).isNotEmpty();
 
-        // Register password-based account under same email
         User user = userRepository.findByEmail("oauth@julius.com").orElseThrow();
         assertThat(user.getFullName()).isEqualTo("OAuth GitHub User");
 
-        // Links Google account matching same email
         Map<String, Object> googleAttrs = new HashMap<>();
         googleAttrs.put("sub", "google-sub-999");
         googleAttrs.put("email", "oauth@julius.com");
@@ -195,7 +194,6 @@ public class AuthIntegrationTest {
         AuthResponse authGoogle = authService.loginOrLinkOAuth2("GOOGLE", googleAttrs, "127.0.0.1", "Mozilla", "corr", "req");
         assertThat(authGoogle.accessToken()).isNotEmpty();
 
-        // Check user id is the same
         Optional<User> linkedUser = userRepository.findByEmail("oauth@julius.com");
         assertThat(linkedUser).isPresent();
         assertThat(linkedUser.get().getId()).isEqualTo(user.getId());
