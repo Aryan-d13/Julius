@@ -18,14 +18,15 @@ import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 @RestController
-@RequestMapping("/api/jobs")
+@RequestMapping("/api/workspaces/{workspaceId}/jobs")
 public class JobController {
 
     private static final Logger log = LoggerFactory.getLogger(JobController.class);
@@ -46,12 +47,16 @@ public class JobController {
     }
 
     @PostMapping
-    public ResponseEntity<Map<String, String>> submitJob(@RequestBody JobConfig config,
-                                                         @RequestHeader(value = "X-User-Id", required = false) String headerUserId) {
+    @PreAuthorize("hasPermission(#workspaceId, 'WORKSPACE', 'jobs.create')")
+    public ResponseEntity<Map<String, String>> submitJob(
+            @PathVariable String workspaceId,
+            @RequestBody JobConfig config) {
+        
         String jobId = UUID.randomUUID().toString();
-        String userId = (headerUserId != null && !headerUserId.isBlank()) ? headerUserId : UUID.randomUUID().toString();
+        String userId = SecurityContextHolder.getContext().getAuthentication().getName();
         String correlationId = org.slf4j.MDC.get(com.julius.clipper.telemetry.CorrelationFilter.CORRELATION_ID_MDC_KEY);
         String requestId = org.slf4j.MDC.get(com.julius.clipper.telemetry.CorrelationFilter.REQUEST_ID_MDC_KEY);
+        
         if (correlationId == null || correlationId.isBlank()) {
             correlationId = "corr-" + UUID.randomUUID().toString().substring(0, 8);
         }
@@ -59,12 +64,14 @@ public class JobController {
             requestId = "req-" + UUID.randomUUID().toString().substring(0, 8);
         }
 
-        log.info("Submitting new clip job config: URL={}, count={}, templateRef={}", config.getUrl(), config.getCount(), config.getTemplateRef());
+        log.info("Submitting new clip job config in workspace {}: URL={}, count={}", workspaceId, config.getUrl(), config.getCount());
 
-        // 1. Persist new Job record
+        // Persist new Job record linked to workspace and creator
         Job job = Job.builder()
                 .id(jobId)
                 .userId(userId)
+                .workspaceId(workspaceId)
+                .createdByUserId(userId)
                 .correlationId(correlationId)
                 .config(config)
                 .clipCount(config.getCount())
@@ -72,10 +79,11 @@ public class JobController {
                 .build();
         jobRepository.save(job);
 
-        // 2. Build initial Task payload
+        // Build initial Task payload
         Map<String, Object> taskPayload = new HashMap<>();
         taskPayload.put("job_id", jobId);
         taskPayload.put("user_id", userId);
+        taskPayload.put("workspace_id", workspaceId);
         taskPayload.put("url", config.getUrl());
         taskPayload.put("count", config.getCount());
         taskPayload.put("copy_language", config.getCopyLanguage() != null ? config.getCopyLanguage() : "en");
@@ -94,7 +102,6 @@ public class JobController {
                 .status(TaskStatus.PENDING)
                 .build();
 
-        // 3. Enqueue download task
         queueProvider.push(downloadTask);
 
         log.info("Job successfully submitted and enqueued initial DOWNLOAD task: jobId={}", jobId);
@@ -105,25 +112,33 @@ public class JobController {
     }
 
     @GetMapping("/{jobId}/clips")
-    public ResponseEntity<List<JobClip>> getJobClips(@PathVariable String jobId) {
-        log.info("Retrieving clip fragments for jobId={}", jobId);
+    @PreAuthorize("hasPermission(#workspaceId, 'WORKSPACE', 'jobs.share')")
+    public ResponseEntity<List<JobClip>> getJobClips(
+            @PathVariable String workspaceId,
+            @PathVariable String jobId) {
+        log.info("Retrieving clip fragments for jobId={} in workspace {}", jobId, workspaceId);
         List<JobClip> clips = jobClipRepository.findByJobId(jobId);
         return ResponseEntity.ok(clips);
     }
 
     @GetMapping("/{jobId}")
-    public ResponseEntity<Job> getJob(@PathVariable String jobId) {
-        log.info("Retrieving job details for jobId={}", jobId);
+    @PreAuthorize("hasPermission(#workspaceId, 'WORKSPACE', 'jobs.share')")
+    public ResponseEntity<Job> getJob(
+            @PathVariable String workspaceId,
+            @PathVariable String jobId) {
+        log.info("Retrieving job details for jobId={} in workspace {}", jobId, workspaceId);
         return jobRepository.findById(jobId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @GetMapping("/{jobId}/stream")
-    public SseEmitter streamJobEvents(@PathVariable String jobId) {
-        log.info("Client initiating event stream connection for jobId={}", jobId);
+    @PreAuthorize("hasPermission(#workspaceId, 'WORKSPACE', 'jobs.share')")
+    public SseEmitter streamJobEvents(
+            @PathVariable String workspaceId,
+            @PathVariable String jobId) {
+        log.info("Client initiating event stream connection for jobId={} in workspace {}", jobId, workspaceId);
 
-        // SseEmitter with 30-minute timeout
         SseEmitter emitter = new SseEmitter(1800000L);
         ChannelTopic topic = new ChannelTopic("seone:job:" + jobId + ":events");
 
@@ -156,7 +171,6 @@ public class JobController {
             cleanup.run();
         });
 
-        // Send confirmation event
         try {
             emitter.send(SseEmitter.event()
                     .name("subscribed")

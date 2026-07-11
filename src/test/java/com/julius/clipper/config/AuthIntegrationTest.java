@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.julius.clipper.domain.Role;
 import com.julius.clipper.domain.User;
 import com.julius.clipper.domain.UserSession;
+import com.julius.clipper.domain.Workspace;
 import com.julius.clipper.repository.RoleRepository;
 import com.julius.clipper.repository.UserRepository;
 import com.julius.clipper.repository.UserSessionRepository;
+import com.julius.clipper.repository.WorkspaceRepository;
 import com.julius.clipper.service.AuthService;
 import com.julius.clipper.service.AuthService.AuthResponse;
 import jakarta.servlet.http.Cookie;
@@ -49,6 +51,9 @@ public class AuthIntegrationTest {
     private UserSessionRepository sessionRepository;
 
     @Autowired
+    private WorkspaceRepository workspaceRepository;
+
+    @Autowired
     private AuthService authService;
 
     @Autowired
@@ -57,10 +62,17 @@ public class AuthIntegrationTest {
     @BeforeEach
     public void setUp() {
         sessionRepository.deleteAll();
+        workspaceRepository.deleteAll();
         userRepository.deleteAll();
         
         if (roleRepository.findByName("ROLE_USER").isEmpty()) {
             roleRepository.save(new Role("role-user-uuid-placeholder-1111", "ROLE_USER"));
+        }
+        if (roleRepository.findByName("ROLE_ORG_OWNER").isEmpty()) {
+            roleRepository.save(new Role("role-org-owner-uuid-1111", "ROLE_ORG_OWNER"));
+        }
+        if (roleRepository.findByName("ROLE_WORKSPACE_ADMIN").isEmpty()) {
+            roleRepository.save(new Role("role-ws-admin-uuid-4444", "ROLE_WORKSPACE_ADMIN"));
         }
     }
 
@@ -100,20 +112,26 @@ public class AuthIntegrationTest {
 
     @Test
     public void testAuthenticationSecurityBoundary() throws Exception {
-        mockMvc.perform(get("/api/jobs/non-existent-id"))
+        mockMvc.perform(get("/api/workspaces/ws-id-placeholder/jobs/non-existent-id"))
                 .andExpect(status().isUnauthorized());
 
         User user = authService.register("auth@julius.com", "Password123!", "Auth Tester");
         AuthResponse auth = authService.login("auth@julius.com", "Password123!", "127.0.0.1", "agent", "corr", "req");
 
-        mockMvc.perform(get("/api/jobs/non-existent-id")
+        // Resolve user's auto-provisioned workspace ID
+        Workspace workspace = workspaceRepository.findAll().stream()
+                .filter(w -> w.getOrganization().getName().contains("Auth Tester"))
+                .findFirst().orElseThrow();
+        String wsId = workspace.getId();
+
+        mockMvc.perform(get("/api/workspaces/" + wsId + "/jobs/non-existent-id")
                 .header("Authorization", "Bearer " + auth.accessToken()))
                 .andExpect(status().isNotFound());
 
         Cookie cookie = new Cookie("access_token", auth.accessToken());
         cookie.setHttpOnly(true);
         cookie.setSecure(true);
-        mockMvc.perform(get("/api/jobs/non-existent-id")
+        mockMvc.perform(get("/api/workspaces/" + wsId + "/jobs/non-existent-id")
                 .cookie(cookie))
                 .andExpect(status().isNotFound());
     }

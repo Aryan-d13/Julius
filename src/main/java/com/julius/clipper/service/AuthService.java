@@ -6,6 +6,7 @@ import com.julius.clipper.config.security.oauth.OAuth2UserProvider;
 import com.julius.clipper.config.security.token.TokenIssuer;
 import com.julius.clipper.domain.*;
 import com.julius.clipper.repository.*;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +28,7 @@ public class AuthService {
     private final TokenIssuer tokenIssuer;
     private final SecurityProperties securityProperties;
     private final List<OAuth2UserProvider> oauthProviders;
+    private final TenantService tenantService;
     private final String dummyPasswordHash;
 
     public AuthService(
@@ -38,7 +40,8 @@ public class AuthService {
             PasswordEncoder passwordEncoder,
             TokenIssuer tokenIssuer,
             SecurityProperties securityProperties,
-            List<OAuth2UserProvider> oauthProviders) {
+            List<OAuth2UserProvider> oauthProviders,
+            @Lazy TenantService tenantService) { // Lazy injected to ensure zero boot timing issues
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.providerAccountRepository = providerAccountRepository;
@@ -48,7 +51,7 @@ public class AuthService {
         this.tokenIssuer = tokenIssuer;
         this.securityProperties = securityProperties;
         this.oauthProviders = oauthProviders;
-        // Pre-compute dummy hash at startup to prevent user enumeration timing attacks
+        this.tenantService = tenantService;
         this.dummyPasswordHash = passwordEncoder.encode("dummy-password-for-sidechannel-enumeration-mitigation");
     }
 
@@ -68,7 +71,12 @@ public class AuthService {
                 .roles(new HashSet<>(Set.of(userRole)))
                 .build();
 
-        return userRepository.save(user);
+        user = userRepository.save(user);
+
+        // Auto-provision Personal Organization and Default Workspace
+        tenantService.createOrganization("Personal Org of " + fullName, user.getId(), true);
+
+        return user;
     }
 
     @Transactional
@@ -77,7 +85,6 @@ public class AuthService {
         Optional<User> userOpt = userRepository.findByEmail(email);
 
         boolean userExists = userOpt.isPresent();
-        // Match user hash OR fall back to pre-computed dummy hash to match execution timing signature
         String hashToMatch = userExists ? userOpt.get().getPasswordHash() : dummyPasswordHash;
         
         boolean passwordMatches = false;
@@ -112,9 +119,9 @@ public class AuthService {
 
         User user;
         Optional<User> existingUserOpt = userRepository.findByEmail(userInfo.email());
+        boolean newUser = false;
         if (existingUserOpt.isPresent()) {
             user = existingUserOpt.get();
-            // Link account if not already linked
             Optional<UserProviderAccount> linkedAccountOpt = providerAccountRepository
                     .findByProviderAndProviderUserId(providerName.toUpperCase(), userInfo.id());
             if (linkedAccountOpt.isEmpty()) {
@@ -126,7 +133,6 @@ public class AuthService {
                 providerAccountRepository.save(providerAccount);
             }
         } else {
-            // New user registration via OAuth
             Role userRole = roleRepository.findByName("ROLE_USER")
                     .orElseThrow(() -> new IllegalStateException("ROLE_USER not seeded"));
 
@@ -136,6 +142,7 @@ public class AuthService {
                     .roles(new HashSet<>(Set.of(userRole)))
                     .build();
             user = userRepository.save(user);
+            newUser = true;
 
             UserProviderAccount providerAccount = UserProviderAccount.builder()
                     .user(user)
@@ -143,6 +150,11 @@ public class AuthService {
                     .providerUserId(userInfo.id())
                     .build();
             providerAccountRepository.save(providerAccount);
+        }
+
+        if (newUser) {
+            // Auto-provision Personal Organization and Default Workspace
+            tenantService.createOrganization("Personal Org of " + user.getFullName(), user.getId(), true);
         }
 
         return createSessionAndIssueTokens(user, ip, userAgent, correlationId, requestId, startTime, "LOGIN_SUCCESS_OAUTH");
@@ -161,11 +173,9 @@ public class AuthService {
 
         UserSession session = sessionOpt.get();
 
-        // Detect refresh token reuse theft: matches previousTokenHash or is already revoked or expired
         boolean isReuse = incomingHash.equals(session.getPreviousTokenHash());
         if (isReuse || session.isRevoked() || session.getExpiresAt().isBefore(LocalDateTime.now())) {
             
-            // Mitigate race conditions: if incoming matches previous token hash, check a short 10s grace window
             if (isReuse) {
                 boolean withinGracePeriod = session.getLastUsedAt().plusSeconds(10).isAfter(LocalDateTime.now());
                 if (withinGracePeriod) {
@@ -175,7 +185,6 @@ public class AuthService {
                 }
             }
 
-            // Real theft / expired -> Invalidate session tree as threat countermeasure
             List<UserSession> activeSessions = sessionRepository.findByUserIdAndRevokedFalse(session.getUser().getId());
             activeSessions.forEach(s -> s.setRevoked(true));
             sessionRepository.saveAll(activeSessions);
@@ -188,7 +197,6 @@ public class AuthService {
             throw new IllegalArgumentException("Session expired or token reused. Please sign in again.");
         }
 
-        // Rotate token (RTR)
         String newRefreshToken = tokenIssuer.issueRefreshToken();
         String newHash = hashToken(newRefreshToken);
 
@@ -226,17 +234,11 @@ public class AuthService {
         });
     }
 
-    /**
-     * Creates session and issues tokens.
-     * Note: Refresh tokens generated via tokenIssuer are cryptographically secure random bytes
-     * (providing at least 256 bits of entropy) Base64 encoded.
-     */
     private AuthResponse createSessionAndIssueTokens(User user, String ip, String userAgent, String correlationId, String requestId, long startTime, String eventType) {
         String sessionId = UUID.randomUUID().toString();
         String refreshTokenValue = tokenIssuer.issueRefreshToken();
         String tokenHash = hashToken(refreshTokenValue);
 
-        // Simple JSON client metadata
         String clientMetadata = String.format(
                 "{\"device_id\":\"%s\",\"browser\":\"%s\",\"platform\":\"Web\"}",
                 UUID.randomUUID(),

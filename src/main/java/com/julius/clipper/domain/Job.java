@@ -11,7 +11,9 @@ import java.time.LocalDateTime;
     @Index(name = "idx_jobs_user_id", columnList = "user_id"),
     @Index(name = "idx_jobs_correlation_id", columnList = "correlation_id"),
     @Index(name = "idx_jobs_status", columnList = "status"),
-    @Index(name = "idx_jobs_created_at", columnList = "created_at")
+    @Index(name = "idx_jobs_created_at", columnList = "created_at"),
+    @Index(name = "idx_jobs_workspace_id", columnList = "workspace_id"),
+    @Index(name = "idx_jobs_creator_id", columnList = "created_by_user_id")
 })
 @Data
 @Builder
@@ -24,6 +26,12 @@ public class Job {
 
     @Column(name = "user_id", length = 36)
     private String userId;
+
+    @Column(name = "workspace_id", length = 36)
+    private String workspaceId;
+
+    @Column(name = "created_by_user_id", length = 36)
+    private String createdByUserId;
 
     @Column(name = "correlation_id", nullable = false)
     private String correlationId;

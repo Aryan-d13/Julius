@@ -1,9 +1,11 @@
 package com.julius.clipper.config;
 
 import com.julius.clipper.config.properties.SecurityProperties;
+import com.julius.clipper.config.security.AuthorizationContextFilter;
 import com.julius.clipper.config.security.CookieOrHeaderBearerTokenResolver;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -13,6 +15,7 @@ import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -29,10 +32,15 @@ public class SecurityConfig {
 
     private final SecurityProperties securityProperties;
     private final CookieOrHeaderBearerTokenResolver tokenResolver;
+    private final AuthorizationContextFilter authContextFilter;
 
-    public SecurityConfig(SecurityProperties securityProperties, CookieOrHeaderBearerTokenResolver tokenResolver) {
+    public SecurityConfig(
+            SecurityProperties securityProperties,
+            CookieOrHeaderBearerTokenResolver tokenResolver,
+            AuthorizationContextFilter authContextFilter) {
         this.securityProperties = securityProperties;
         this.tokenResolver = tokenResolver;
+        this.authContextFilter = authContextFilter;
     }
 
     @Bean
@@ -53,7 +61,8 @@ public class SecurityConfig {
                     .decoder(jwtDecoder())
                     .jwtAuthenticationConverter(jwtAuthenticationConverter())
                 )
-            );
+            )
+            .addFilterAfter(authContextFilter, BearerTokenAuthenticationFilter.class);
 
         return http.build();
     }
@@ -64,7 +73,6 @@ public class SecurityConfig {
         SecretKey secretKey = new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
         NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withSecretKey(secretKey).build();
 
-        // Configure explicit clock skew tolerance (60 seconds)
         DelegatingOAuth2TokenValidator<Jwt> validator = new DelegatingOAuth2TokenValidator<>(
                 new JwtTimestampValidator(Duration.ofSeconds(60))
         );
