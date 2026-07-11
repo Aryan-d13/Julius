@@ -5,6 +5,12 @@ All notable changes to Julius will be documented in this file.
 ## [Unreleased] - 2026-07-11
 
 ### Added
+*   **Enterprise Operations & Admin Platform (Epic 7):** Designed and implemented the complete admin REST platform under `/api/admin/**` path mappings.
+*   **Polymorphic Global Search:** Added centralized `/search` endpoint resolving query hits across users, organizations, workspaces, and jobs.
+*   **Operator Internal Notes:** Added database support for attaching operator-only debugging notes to users, organizations, and workspaces.
+*   **Chronological Activity Timelines:** Traverses user registration, org joining, and login logs.
+*   **Telemetry Aggregations:** Exposes real-time Whisper/Gemini token cost counts and worker thread utilization benchmarks.
+*   **Action Interventions:** Supports remote job retry triggers and cancellations.
 *   **Multi-Tenancy & Authorization Architecture (Epic 6):** Seeded organization, workspace, membership, and invitation relational mapping schemas with normalized roles and dynamic permissions.
 *   **Request-Scoped ThreadLocal Cache:** Introduced `AuthorizationContext` lazy loading and caching resolved permission maps once per request, eliminating database query redundancy.
 *   **Resource-Oriented Endpoint Architecture:** Scoped execution jobs directly under path parameters (`/api/workspaces/{workspaceId}/jobs`).
