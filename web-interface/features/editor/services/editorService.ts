@@ -19,10 +19,12 @@ export interface ClipVersionDTO {
 }
 
 export interface RenderArtifactDTO {
-  artifactId: string;
+  artifactId?: string;
+  id?: string;
   status: string;
-  renderHash: string;
-  url: string;
+  renderHash?: string;
+  url?: string;
+  errorMessage?: string;
 }
 
 export const editorService = {

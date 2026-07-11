@@ -231,16 +231,21 @@ export default function EditorPage() {
     setExportUrl(null);
     try {
       const renderRes = await editorService.dispatchRender(sessionId, stylePresetId);
+      const artifactId = renderRes.artifactId;
+      if (!artifactId) {
+        setIsRendering(false);
+        return;
+      }
       notification.show('Rendering task dispatched to background worker queue.');
 
       // Simple polling loop for compilation status
       const pollInterval = setInterval(async () => {
         try {
-          const statusRes = await editorService.getRenderStatus(renderRes.artifactId);
+          const statusRes = await editorService.getRenderStatus(artifactId);
           if (statusRes.status === 'COMPLETED') {
             clearInterval(pollInterval);
             setIsRendering(false);
-            setExportUrl(statusRes.url);
+            setExportUrl(statusRes.url ?? null);
             notification.show('Export compilation complete!');
           } else if (statusRes.status === 'FAILED') {
             clearInterval(pollInterval);
