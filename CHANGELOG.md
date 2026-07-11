@@ -5,6 +5,13 @@ All notable changes to Julius will be documented in this file.
 ## [Unreleased] - 2026-07-11
 
 ### Added
+*   **Interactive Editing & Subtitle Platform (Epic 9):** Built non-destructive versioned editing session domain layers (`EditSession`, `ClipVersion`, `SubtitleStyle`, `RenderProfile`, `RenderArtifact`).
+*   **WAV Audio Waveform Peak Ingest:** Implemented `WaveformGenerator` extracting and caching normalized amplitude arrays during media ingestion.
+*   **FFmpeg Thumbnail Sprite Tiling:** Created `SpriteGenerator` producing sprite sheet image blocks and metadata grids for editor scrubber timelines.
+*   **Font Registry Management:** Introduced `FontRegistry` dynamically downloading and caching whitelisted TrueType Fonts (TTF).
+*   **Advanced SubStation Alpha (ASS) Subtitle Compiler:** Implemented `SubtitleCompiler` generating karaoke subtitle scripts for FFmpeg filter overlays.
+*   **Timeline Integrity Constraints Engine:** Implemented `TimelineEngine` validating duration boundaries, overlaps, and asset references.
+*   **Figma-like Undo/Redo Client Engine:** Integrated command state stacks and keyboard triggers.
 *   **Frontend Modularization & Feature-Slicing (Epic 8.5):** Extracted the legacy single-file dashboard component `app/page.tsx` into a proper Next.js App Router sub-routes group hierarchy (`(auth)`, `(dashboard)`, etc.).
 *   **Business Feature Folders:** Introduced a `features/` directory organizing auth, jobs, clips, and admin components.
 *   **UI Primitives Library:** Created a reusable `components/ui/` primitive wrapper system (`Button`, `Input`, `Card`).
