@@ -5,6 +5,11 @@ All notable changes to Julius will be documented in this file.
 ## [Unreleased] - 2026-07-11
 
 ### Added
+*   **Frontend Modularization & Feature-Slicing (Epic 8.5):** Extracted the legacy single-file dashboard component `app/page.tsx` into a proper Next.js App Router sub-routes group hierarchy (`(auth)`, `(dashboard)`, etc.).
+*   **Business Feature Folders:** Introduced a `features/` directory organizing auth, jobs, clips, and admin components.
+*   **UI Primitives Library:** Created a reusable `components/ui/` primitive wrapper system (`Button`, `Input`, `Card`).
+*   **Domain Service Layers:** Distributed the global `apiClient` into isolated service endpoints communicating through a centralized `httpClient` base fetch client.
+*   **Next.js Error Boundaries:** Added route files (`loading.tsx`, `error.tsx`, `global-error.tsx`, `not-found.tsx`) mapping loader shimmers and crash boundaries.
 *   **Julius Customer Platform Web Application (Epic 8):** Implemented the Next.js production-ready customer dashboard styled with custom Vanilla CSS variables theme.
 *   **Integrated Multi-View Client Routing:** Orchestrates pages for Landing, Login/Register Authentication, Wizard Onboardings, Active Jobs Details, Clip Library, and Control Settings.
 *   **Interactive Split-Screen Clip Viewer:** Embedded video previews, clickable word-seeking transcripts, caption hooks presets, and download anchors.
