@@ -12,9 +12,17 @@ import java.util.*;
 public class SubtitleCompiler {
     private static final Logger log = LoggerFactory.getLogger(SubtitleCompiler.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final FontRegistry fontRegistry;
+
+    public SubtitleCompiler(FontRegistry fontRegistry) {
+        this.fontRegistry = fontRegistry;
+    }
 
     public String compile(SubtitleStyle style, String timelineStateJson) throws Exception {
         log.info("Starting ASS subtitle compilation for style: {}", style.getName());
+        
+        // Trigger font download & caching via Registry
+        fontRegistry.getFontPath(style.getFontName());
 
         StringBuilder ass = new StringBuilder();
         ass.append("[Script Info]\n");

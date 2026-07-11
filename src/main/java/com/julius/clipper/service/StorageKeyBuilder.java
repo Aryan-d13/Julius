@@ -41,6 +41,24 @@ public class StorageKeyBuilder {
         return "library/audios/" + prefix + clipId + ".wav";
     }
 
+    public static String libraryWaveform(String clipId, String userId) {
+        validateId(clipId);
+        String prefix = userId != null ? userId + "_" : "";
+        return "library/waveforms/" + prefix + clipId + ".json";
+    }
+
+    public static String librarySprite(String clipId, String userId) {
+        validateId(clipId);
+        String prefix = userId != null ? userId + "_" : "";
+        return "library/sprites/" + prefix + clipId + ".png";
+    }
+
+    public static String librarySpriteMeta(String clipId, String userId) {
+        validateId(clipId);
+        String prefix = userId != null ? userId + "_" : "";
+        return "library/sprites/" + prefix + clipId + "_meta.json";
+    }
+
     public static String thumbnail(int index) {
         return "thumbnails/clip_" + index + ".jpg";
     }

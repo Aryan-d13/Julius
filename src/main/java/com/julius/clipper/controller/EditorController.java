@@ -4,6 +4,7 @@ import com.julius.clipper.domain.*;
 import com.julius.clipper.repository.*;
 import com.julius.clipper.service.EditorEngine;
 import com.julius.clipper.service.RenderEngine;
+import com.julius.clipper.service.TimelineEngine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -18,24 +19,30 @@ public class EditorController {
 
     private final EditorEngine editorEngine;
     private final RenderEngine renderEngine;
+    private final TimelineEngine timelineEngine;
     private final EditSessionRepository sessionRepository;
     private final ClipVersionRepository versionRepository;
     private final RenderProfileRepository profileRepository;
     private final RenderArtifactRepository artifactRepository;
+    private final com.julius.clipper.service.StorageClient storageClient;
 
     public EditorController(
             EditorEngine editorEngine,
             RenderEngine renderEngine,
+            TimelineEngine timelineEngine,
             EditSessionRepository sessionRepository,
             ClipVersionRepository versionRepository,
             RenderProfileRepository profileRepository,
-            RenderArtifactRepository artifactRepository) {
+            RenderArtifactRepository artifactRepository,
+            com.julius.clipper.service.StorageClient storageClient) {
         this.editorEngine = editorEngine;
         this.renderEngine = renderEngine;
+        this.timelineEngine = timelineEngine;
         this.sessionRepository = sessionRepository;
         this.versionRepository = versionRepository;
         this.profileRepository = profileRepository;
         this.artifactRepository = artifactRepository;
+        this.storageClient = storageClient;
     }
 
     @PostMapping("/sessions")
@@ -77,6 +84,7 @@ public class EditorController {
             @RequestBody Map<String, String> payload) {
         try {
             String timelineJson = payload.get("timelineState");
+            timelineEngine.validateTimeline(timelineJson);
             String styleId = payload.get("stylePresetId");
             ClipVersion version = editorEngine.saveAutosave(sessionId, timelineJson, styleId);
             return ResponseEntity.ok(Map.of("versionNumber", version.getVersionNumber(), "status", "AUTOSAVED"));
@@ -92,6 +100,7 @@ public class EditorController {
         try {
             String name = payload.getOrDefault("name", "Named Checkpoint");
             String timelineJson = payload.get("timelineState");
+            timelineEngine.validateTimeline(timelineJson);
             String styleId = payload.get("stylePresetId");
             ClipVersion version = editorEngine.createNamedCheckpoint(sessionId, name, timelineJson, styleId);
             return ResponseEntity.ok(Map.of("versionNumber", version.getVersionNumber(), "status", "CHECKPOINT_SAVED"));
@@ -107,6 +116,8 @@ public class EditorController {
         try {
             ClipVersion version = versionRepository.findLatestVersionForSession(sessionId)
                     .orElseThrow(() -> new NoSuchElementException("Latest clip version not found for session: " + sessionId));
+
+            timelineEngine.validateTimeline(version.getTimelineStateJson());
 
             RenderProfile profile = profileRepository.findById(profileId)
                     .orElseGet(() -> {
@@ -142,5 +153,68 @@ public class EditorController {
         return artifactRepository.findById(artifactId)
                 .<ResponseEntity<?>>map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/sessions/{sessionId}/waveform")
+    public ResponseEntity<?> getWaveform(@PathVariable("sessionId") String sessionId) {
+        try {
+            EditSession session = sessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new NoSuchElementException("Session not found: " + sessionId));
+            String userId = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+            String key = com.julius.clipper.service.StorageKeyBuilder.libraryWaveform(session.getClipId(), userId);
+
+            if (storageClient.exists(key)) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                storageClient.download(key, out);
+                return ResponseEntity.ok()
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .body(out.toString(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            return ResponseEntity.ok("[]");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/sessions/{sessionId}/sprite")
+    public ResponseEntity<?> getSpriteSheet(@PathVariable("sessionId") String sessionId) {
+        try {
+            EditSession session = sessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new NoSuchElementException("Session not found: " + sessionId));
+            String userId = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+            String key = com.julius.clipper.service.StorageKeyBuilder.librarySprite(session.getClipId(), userId);
+
+            if (storageClient.exists(key)) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                storageClient.download(key, out);
+                return ResponseEntity.ok()
+                        .contentType(org.springframework.http.MediaType.IMAGE_PNG)
+                        .body(out.toByteArray());
+            }
+            return ResponseEntity.notFound().build();
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/sessions/{sessionId}/sprite-meta")
+    public ResponseEntity<?> getSpriteMeta(@PathVariable("sessionId") String sessionId) {
+        try {
+            EditSession session = sessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new NoSuchElementException("Session not found: " + sessionId));
+            String userId = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+            String key = com.julius.clipper.service.StorageKeyBuilder.librarySpriteMeta(session.getClipId(), userId);
+
+            if (storageClient.exists(key)) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                storageClient.download(key, out);
+                return ResponseEntity.ok()
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .body(out.toString(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            return ResponseEntity.ok("{\"interval\":2.0,\"width\":160,\"height\":90,\"columns\":10}");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 }

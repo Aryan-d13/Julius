@@ -24,11 +24,17 @@ public class IngestWorker implements Worker {
 
     private final MediaConverter converter;
     private final com.julius.clipper.service.StorageClient storageClient;
+    private final com.julius.clipper.service.WaveformGenerator waveformGenerator;
+    private final com.julius.clipper.service.SpriteGenerator spriteGenerator;
 
     public IngestWorker(MediaConverter converter,
-                        com.julius.clipper.service.StorageClient storageClient) {
+                        com.julius.clipper.service.StorageClient storageClient,
+                        com.julius.clipper.service.WaveformGenerator waveformGenerator,
+                        com.julius.clipper.service.SpriteGenerator spriteGenerator) {
         this.converter = converter;
         this.storageClient = storageClient;
+        this.waveformGenerator = waveformGenerator;
+        this.spriteGenerator = spriteGenerator;
     }
 
     @Override
@@ -92,6 +98,60 @@ public class IngestWorker implements Worker {
                 } else {
                     log.info("Processed audio track already matched by hash in library: {}", targetAudioKey);
                 }
+
+                // ─── 1. Generate & Upload Waveform JSON Asset ─────────────────
+                String waveformKey = com.julius.clipper.service.StorageKeyBuilder.libraryWaveform(clipId, userId);
+                if (!storageClient.exists(waveformKey)) {
+                    String waveformJson = waveformGenerator.generateWaveformJson(tempWavFile, 200);
+                    byte[] jsonBytes = waveformJson.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    try (InputStream jsonIn = new java.io.ByteArrayInputStream(jsonBytes)) {
+                        storageClient.upload(new com.julius.clipper.service.UploadRequest(
+                            waveformKey,
+                            jsonIn,
+                            jsonBytes.length,
+                            "application/json",
+                            null,
+                            null
+                        ));
+                    }
+                    log.info("Uploaded waveform JSON envelope: {}", waveformKey);
+                }
+
+                // ─── 2. Generate & Upload Sprite Sheet Asset ──────────────────
+                String spriteKey = com.julius.clipper.service.StorageKeyBuilder.librarySprite(clipId, userId);
+                String spriteMetaKey = com.julius.clipper.service.StorageKeyBuilder.librarySpriteMeta(clipId, userId);
+                if (!storageClient.exists(spriteKey)) {
+                    File spriteFile = spriteGenerator.generateSpriteSheet(tempInputFile, 30.0, 2.0);
+                    if (spriteFile != null && spriteFile.exists()) {
+                        try (InputStream spriteIn = new FileInputStream(spriteFile)) {
+                            storageClient.upload(new com.julius.clipper.service.UploadRequest(
+                                spriteKey,
+                                spriteIn,
+                                spriteFile.length(),
+                                "image/png",
+                                null,
+                                null
+                            ));
+                        }
+                        
+                        // Upload metadata descriptor
+                        String spriteMeta = "{\"interval\":2.0,\"width\":160,\"height\":90,\"columns\":10}";
+                        byte[] metaBytes = spriteMeta.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                        try (InputStream metaIn = new java.io.ByteArrayInputStream(metaBytes)) {
+                            storageClient.upload(new com.julius.clipper.service.UploadRequest(
+                                spriteMetaKey,
+                                metaIn,
+                                metaBytes.length,
+                                "application/json",
+                                null,
+                                null
+                            ));
+                        }
+                        spriteFile.delete();
+                        log.info("Uploaded sprite sheet PNG and meta descriptor: {}", spriteKey);
+                    }
+                }
+
             } finally {
                 if (tempWavFile.exists()) {
                     tempWavFile.delete();
