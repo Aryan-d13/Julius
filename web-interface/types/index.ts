@@ -151,3 +151,18 @@ export interface Workspace {
   id: string;
   name: string;
 }
+
+export interface SubtitleStyle {
+  id: string;
+  name: string;
+  fontName: string;
+  fontSize: number;
+  primaryColor: string;
+  secondaryColor: string;
+  outlineColor: string;
+  shadowColor: string;
+  outlineWidth: number;
+  shadowDepth: number;
+  alignment: number;
+  safeZoneVertical: number;
+}
