@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Outfit, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { WorkspaceProvider } from "../providers/WorkspaceProvider";
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -26,7 +27,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${outfit.variable} ${jetbrainsMono.variable}`}>
-      <body>{children}</body>
+      <body>
+        <WorkspaceProvider>
+          {children}
+        </WorkspaceProvider>
+      </body>
     </html>
   );
 }
