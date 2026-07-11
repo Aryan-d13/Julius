@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { X, Download } from 'lucide-react';
 import { JobClip } from '../types';
 import { Button } from './ui/button';
+import { MEDIA_BASE_URL } from '../lib/constants';
 
 interface ClipViewerModalProps {
   clip: JobClip;
@@ -28,7 +29,7 @@ export const ClipViewerModal: React.FC<ClipViewerModalProps> = ({
     }
   };
 
-  const mediaUrl = `http://localhost:8080/data/jobs/${clip.jobId}/clips/${clip.filename}`;
+  const mediaUrl = `${MEDIA_BASE_URL}/data/jobs/${clip.jobId}/clips/${clip.filename}`;
 
   return (
     <div className="cmd-palette-overlay" style={{ paddingTop: '5vh' }} onClick={onClose}>
@@ -104,7 +105,7 @@ export const ClipViewerModal: React.FC<ClipViewerModalProps> = ({
 
               {clipTab === 'SOCIAL_COPY' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.85rem' }}>
-                  <p><strong>POV Hook Overlay:</strong> "{clip.povText || 'Wait for the twist...'}"</p>
+                  <p><strong>POV Hook Overlay:</strong> &ldquo;{clip.povText || 'Wait for the twist...'}&rdquo;</p>
                   <div style={{ background: 'var(--bg-primary)', padding: '0.75rem', borderRadius: '4px', border: '1px solid var(--border-muted)' }}>
                     <p style={{ fontWeight: 600 }}>Suggested Title:</p>
                     <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>How AI is changing rendering forever! 🚀 #shorts #ai</p>

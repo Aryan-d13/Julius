@@ -1,0 +1,25 @@
+import React from 'react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { expect, test, vi } from 'vitest';
+import CreateJobPage from '../../app/(dashboard)/jobs/page';
+import { QueryProvider } from '../../providers/QueryProvider';
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+  }),
+}));
+
+test('simulation flow for job submission input state changes', async () => {
+  render(
+    <QueryProvider>
+      <CreateJobPage />
+    </QueryProvider>
+  );
+
+  const input = screen.getByPlaceholderText('https://www.youtube.com/watch?v=...');
+  fireEvent.change(input, { target: { value: 'https://youtube.com/watch?v=abcdef' } });
+  
+  expect(input).toHaveValue('https://youtube.com/watch?v=abcdef');
+});

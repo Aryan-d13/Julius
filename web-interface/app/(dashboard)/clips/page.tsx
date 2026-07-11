@@ -1,31 +1,21 @@
-"use client";
+'use client';
 
-import React, { useState, useEffect } from 'react';
-import { clipsService } from '../../../features/clips/services/clipsService';
-import { JobClip } from '../../../types';
-import { Card } from '../../../components/ui/card';
-import { ClipViewerModal } from '../../../components/ClipViewerModal';
+import React, { useState } from 'react';
 import { Sparkles } from 'lucide-react';
+import { useJobClips } from '../../../features/clips/hooks/useClipsQueries';
+import { useNotification } from '../../../hooks/useNotification';
+import { ClipViewerModal } from '../../../components/ClipViewerModal';
+import { ACTIVE_JOB_KEY, MEDIA_BASE_URL } from '../../../lib/constants';
+import type { JobClip } from '../../../types';
 
 export default function ClipsLibraryPage() {
-  const [clips, setClips] = useState<JobClip[]>([]);
+  const activeJobId = typeof window !== 'undefined'
+    ? localStorage.getItem(ACTIVE_JOB_KEY)
+    : null;
+
+  const { data: clips = [] } = useJobClips(activeJobId);
   const [selectedClip, setSelectedClip] = useState<JobClip | null>(null);
-  const [showNotificationText, setShowNotificationText] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Attempt to load from active job first
-    if (typeof window !== "undefined") {
-      const activeJobId = localStorage.getItem("julius_active_job_id");
-      if (activeJobId) {
-        clipsService.getJobClips(activeJobId).then(res => setClips(res)).catch(() => {});
-      }
-    }
-  }, []);
-
-  const showNotification = (msg: string) => {
-    setShowNotificationText(msg);
-    setTimeout(() => setShowNotificationText(null), 3000);
-  };
+  const notification = useNotification();
 
   return (
     <div>
@@ -41,12 +31,12 @@ export default function ClipsLibraryPage() {
         </div>
       ) : (
         <div className="clips-grid">
-          {clips.map(clip => (
+          {clips.map((clip) => (
             <div key={clip.id} className="clip-box" style={{ cursor: 'pointer' }} onClick={() => setSelectedClip(clip)}>
               <div className="clip-preview-container">
                 <span className="clip-badge">Fragment #{clip.clipIndex}</span>
-                <span className="clip-score-badge">Score: {clip.score || 95}%</span>
-                <video className="clip-video" src={`http://localhost:8080/data/jobs/${clip.jobId}/clips/${clip.filename}`} preload="metadata" muted />
+                <span className="clip-score-badge">Score: {clip.score ?? 95}%</span>
+                <video className="clip-video" src={`${MEDIA_BASE_URL}/data/jobs/${clip.jobId}/clips/${clip.filename}`} preload="metadata" muted />
               </div>
               <div className="clip-details">
                 <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>{clip.filename}</span>
@@ -58,13 +48,13 @@ export default function ClipsLibraryPage() {
       )}
 
       {selectedClip && (
-        <ClipViewerModal clip={selectedClip} onClose={() => setSelectedClip(null)} showNotification={showNotification} />
+        <ClipViewerModal clip={selectedClip} onClose={() => setSelectedClip(null)} showNotification={notification.show} />
       )}
 
-      {showNotificationText && (
+      {notification.text && (
         <div className="notification-banner">
           <Sparkles size={16} color="#10B981" />
-          <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{showNotificationText}</span>
+          <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{notification.text}</span>
         </div>
       )}
     </div>

@@ -66,7 +66,7 @@ export default function OnboardingPage() {
           <div className="control-form" style={{ gap: '1rem', textAlign: 'center' }}>
             <CheckCircle2 size={48} color="#10B981" style={{ margin: '0 auto' }} />
             <h2>Organization Setup Complete!</h2>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Your default personal workspaces are active. Let's create your first rendering task.</p>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Your default personal workspaces are active. Let&apos;s create your first rendering task.</p>
             <Button variant="primary" onClick={finishOnboarding}>Get Started</Button>
           </div>
         )}

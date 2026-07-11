@@ -1,40 +1,31 @@
-"use client";
+'use client';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { 
-  Zap, Home, Plus, Sparkles, Settings, ChevronDown, Search 
+import {
+  Zap, Home, Plus, Sparkles, Settings, ChevronDown, Search,
 } from 'lucide-react';
 import { useWorkspace } from '../../providers/WorkspaceProvider';
+import { useAuthGuard } from '../../hooks/useAuthGuard';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { CommandPalette } from '../../components/CommandPalette';
+import { AUTH_TOKEN_KEY, CURRENT_USER_KEY } from '../../lib/constants';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { activeOrg, setActiveOrg, activeWorkspace, orgList } = useWorkspace();
+  const { user: currentUser } = useCurrentUser();
+  useAuthGuard();
 
   const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState(false);
   const [showCmdPalette, setShowCmdPalette] = useState(false);
-  const [currentUser, setCurrentUser] = useState<any>(null);
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const user = localStorage.getItem("julius_current_user");
-      const token = localStorage.getItem("julius_auth_token");
-      if (!token) {
-        router.push('/login');
-      } else if (user) {
-        setCurrentUser(JSON.parse(user));
-      }
-    }
-  }, [router]);
-
-  // Keyboard binding for Command Palette trigger: Cmd+K / Ctrl+K
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        setShowCmdPalette(prev => !prev);
+        setShowCmdPalette((prev) => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -42,8 +33,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem("julius_auth_token");
-    localStorage.removeItem("julius_current_user");
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(CURRENT_USER_KEY);
     router.push('/');
   };
 
@@ -51,24 +42,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="platform-layout">
-      {/* Sidebar Navigation Panel */}
       <aside className="platform-sidebar">
         <div className="sidebar-logo">
           <Zap size={20} />
           <span>JULIUS AI</span>
         </div>
 
-        {/* Workspace context switcher */}
         <div className="context-switcher">
           <label>Organization</label>
-          <button className="switcher-btn" onClick={() => setShowWorkspaceDropdown(!showWorkspaceDropdown)}>
+          <button
+            className="switcher-btn"
+            onClick={() => setShowWorkspaceDropdown(!showWorkspaceDropdown)}
+            aria-expanded={showWorkspaceDropdown}
+            aria-haspopup="listbox"
+          >
             <span>{activeOrg.name}</span>
             <ChevronDown size={14} />
           </button>
           {showWorkspaceDropdown && (
-            <div className="switcher-dropdown">
-              {orgList.map(o => (
-                <div key={o.id} className="dropdown-item" onClick={() => { setActiveOrg(o); setShowWorkspaceDropdown(false); }}>
+            <div className="switcher-dropdown" role="listbox">
+              {orgList.map((o) => (
+                <div
+                  key={o.id}
+                  className="dropdown-item"
+                  role="option"
+                  aria-selected={o.id === activeOrg.id}
+                  onClick={() => { setActiveOrg(o); setShowWorkspaceDropdown(false); }}
+                >
                   {o.name}
                 </div>
               ))}
@@ -76,8 +76,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           )}
         </div>
 
-        {/* Links list menu */}
-        <nav className="sidebar-menu">
+        <nav className="sidebar-menu" aria-label="Main navigation">
           <button className={`menu-item ${isActive('/dashboard') ? 'active' : ''}`} onClick={() => router.push('/dashboard')}>
             <Home size={18} />
             <span>Dashboard</span>
@@ -96,23 +95,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </button>
         </nav>
 
-        {/* Sidebar user credentials footer */}
         <div className="sidebar-footer">
           <label>Active User Profile</label>
           <div className="user-profile-block">
             <div className="avatar">OP</div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{currentUser?.fullName || 'Operator'}</span>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{currentUser?.email || 'operator@julius.com'}</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{currentUser?.fullName ?? 'Operator'}</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{currentUser?.email ?? 'operator@julius.com'}</span>
             </div>
           </div>
-          <button className="menu-item" style={{ fontSize: '0.8rem', color: '#EF4444', borderTop: '1px solid var(--border-muted)', paddingTop: '0.5rem' }} onClick={handleLogout}>
+          <button
+            className="menu-item"
+            style={{ fontSize: '0.8rem', color: '#EF4444', borderTop: '1px solid var(--border-muted)', paddingTop: '0.5rem' }}
+            onClick={handleLogout}
+          >
             Sign Out
           </button>
         </div>
       </aside>
 
-      {/* Central Frame Wrapper */}
       <main className="platform-content">
         <header className="content-header">
           <div className="header-logo">
@@ -134,7 +135,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </main>
 
-      {/* Global Command Palette modal overlay */}
       {showCmdPalette && (
         <CommandPalette onClose={() => setShowCmdPalette(false)} />
       )}

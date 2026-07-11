@@ -2,9 +2,11 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { authService } from '../../../features/auth/services/authService';
+import { useLogin, useRegister } from '../../../features/auth/hooks/useAuthQueries';
+import { httpClient } from '../../../lib/httpClient';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
+import { CURRENT_USER_KEY } from '../../../lib/constants';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,35 +15,61 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
 
-  const handleAuthSubmit = async (e: React.FormEvent) => {
+  const loginMutation = useLogin();
+  const registerMutation = useRegister();
+
+  const handleAuthSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      if (isLogin) {
-        const res = await authService.login({ email, password });
-        localStorage.setItem("julius_current_user", JSON.stringify({
-          id: res.userId || 'user-1',
-          email,
-          fullName: 'Julius Customer'
-        }));
-        router.push('/dashboard');
-      } else {
-        await authService.register({ email, password, fullName });
-        const loginRes = await authService.login({ email, password });
-        localStorage.setItem("julius_current_user", JSON.stringify({
-          id: loginRes.userId || 'user-1',
-          email,
-          fullName
-        }));
-        router.push('/onboarding');
-      }
-    } catch (err: any) {
-      alert(err.message || 'Authentication failed');
+    if (isLogin) {
+      loginMutation.mutate(
+        { email, password },
+        {
+          onSuccess: (res) => {
+            localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({
+              id: res.userId || 'user-1',
+              email,
+              fullName: res.fullName || 'Julius Customer'
+            }));
+            router.push('/dashboard');
+          },
+          onError: (err: Error) => {
+            alert(err.message || 'Authentication failed');
+          }
+        }
+      );
+    } else {
+      registerMutation.mutate(
+        { email, password, fullName },
+        {
+          onSuccess: () => {
+            loginMutation.mutate(
+              { email, password },
+              {
+                onSuccess: (loginRes) => {
+                  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({
+                    id: loginRes.userId || 'user-1',
+                    email,
+                    fullName
+                  }));
+                  router.push('/onboarding');
+                },
+                onError: (err: Error) => {
+                  alert(err.message || 'Authentication failed');
+                }
+              }
+            );
+          },
+          onError: (err: Error) => {
+            alert(err.message || 'Registration failed');
+          }
+        }
+      );
     }
   };
 
   const handleFederatedLogin = (provider: string) => {
-    localStorage.setItem("julius_auth_token", `${provider}-mock-token`);
-    localStorage.setItem("julius_current_user", JSON.stringify({
+    httpClient.setToken(`${provider}-mock-token`);
+    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({
       id: `user-${provider}`,
       email: `${provider}@julius.com`,
       fullName: `${provider.toUpperCase()} User`

@@ -1,9 +1,10 @@
-import { httpClient } from "../../../lib/httpClient";
+import { httpClient } from '../../../lib/httpClient';
+import type { LoginRequest, AuthResponse, RegisterRequest, RegisterResponse, UserSession } from '../../../types';
 
 export const authService = {
-  login: async (payload: any) => {
-    const res = await httpClient.request<any>("/api/auth/login", {
-      method: "POST",
+  login: async (payload: LoginRequest): Promise<AuthResponse> => {
+    const res = await httpClient.request<AuthResponse>('/api/auth/login', {
+      method: 'POST',
       body: JSON.stringify(payload),
     });
     if (res.accessToken) {
@@ -12,26 +13,26 @@ export const authService = {
     return res;
   },
 
-  register: async (payload: any) => {
-    return httpClient.request<any>("/api/auth/register", {
-      method: "POST",
+  register: async (payload: RegisterRequest): Promise<RegisterResponse> => {
+    return httpClient.request<RegisterResponse>('/api/auth/register', {
+      method: 'POST',
       body: JSON.stringify(payload),
     });
   },
 
-  getSessions: async () => {
-    return httpClient.request<any[]>("/api/auth/sessions", {
-      method: "GET",
+  getSessions: async (): Promise<UserSession[]> => {
+    return httpClient.request<UserSession[]>('/api/auth/sessions', {
+      method: 'GET',
     });
   },
 
-  revokeSession: async (sessionId: string) => {
-    return httpClient.request<any>(`/api/auth/sessions/${sessionId}`, {
-      method: "DELETE",
+  revokeSession: async (sessionId: string): Promise<void> => {
+    await httpClient.request<Record<string, never>>(`/api/auth/sessions/${sessionId}`, {
+      method: 'DELETE',
     });
   },
 
-  logout: () => {
+  logout: (): void => {
     httpClient.setToken(null);
-  }
+  },
 };
