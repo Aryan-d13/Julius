@@ -25,6 +25,9 @@ public class EditorController {
     private final RenderProfileRepository profileRepository;
     private final RenderArtifactRepository artifactRepository;
     private final com.julius.clipper.service.StorageClient storageClient;
+    private final JobRepository jobRepository;
+    private final JobClipRepository jobClipRepository;
+    private final org.springframework.security.access.PermissionEvaluator permissionEvaluator;
 
     public EditorController(
             EditorEngine editorEngine,
@@ -34,7 +37,10 @@ public class EditorController {
             ClipVersionRepository versionRepository,
             RenderProfileRepository profileRepository,
             RenderArtifactRepository artifactRepository,
-            com.julius.clipper.service.StorageClient storageClient) {
+            com.julius.clipper.service.StorageClient storageClient,
+            JobRepository jobRepository,
+            JobClipRepository jobClipRepository,
+            org.springframework.security.access.PermissionEvaluator permissionEvaluator) {
         this.editorEngine = editorEngine;
         this.renderEngine = renderEngine;
         this.timelineEngine = timelineEngine;
@@ -43,6 +49,9 @@ public class EditorController {
         this.profileRepository = profileRepository;
         this.artifactRepository = artifactRepository;
         this.storageClient = storageClient;
+        this.jobRepository = jobRepository;
+        this.jobClipRepository = jobClipRepository;
+        this.permissionEvaluator = permissionEvaluator;
     }
 
     @PostMapping("/sessions")
@@ -50,6 +59,7 @@ public class EditorController {
             @RequestParam("clipId") String clipId,
             @RequestParam("name") String name) {
         try {
+            checkWorkspacePermission(getWorkspaceIdForClip(clipId), "jobs.create");
             EditSession session = editorEngine.createSession(clipId, name);
             return ResponseEntity.ok(session);
         } catch (Exception e) {
@@ -61,6 +71,7 @@ public class EditorController {
     @GetMapping("/sessions/{sessionId}/latest")
     public ResponseEntity<?> getLatestVersion(@PathVariable("sessionId") String sessionId) {
         try {
+            checkWorkspacePermission(getWorkspaceIdForSession(sessionId), "jobs.share");
             ClipVersion latest = versionRepository.findLatestVersionForSession(sessionId)
                     .orElseThrow(() -> new NoSuchElementException("No version found for session: " + sessionId));
             
@@ -83,6 +94,7 @@ public class EditorController {
             @PathVariable("sessionId") String sessionId,
             @RequestBody Map<String, String> payload) {
         try {
+            checkWorkspacePermission(getWorkspaceIdForSession(sessionId), "jobs.create");
             String timelineJson = payload.get("timelineState");
             timelineEngine.validateTimeline(timelineJson);
             String styleId = payload.get("stylePresetId");
@@ -98,6 +110,7 @@ public class EditorController {
             @PathVariable("sessionId") String sessionId,
             @RequestBody Map<String, String> payload) {
         try {
+            checkWorkspacePermission(getWorkspaceIdForSession(sessionId), "jobs.create");
             String name = payload.getOrDefault("name", "Named Checkpoint");
             String timelineJson = payload.get("timelineState");
             timelineEngine.validateTimeline(timelineJson);
@@ -114,6 +127,7 @@ public class EditorController {
             @PathVariable("sessionId") String sessionId,
             @RequestParam("profileId") String profileId) {
         try {
+            checkWorkspacePermission(getWorkspaceIdForSession(sessionId), "jobs.create");
             ClipVersion version = versionRepository.findLatestVersionForSession(sessionId)
                     .orElseThrow(() -> new NoSuchElementException("Latest clip version not found for session: " + sessionId));
 
@@ -150,14 +164,20 @@ public class EditorController {
 
     @GetMapping("/render/{artifactId}/status")
     public ResponseEntity<?> getRenderStatus(@PathVariable("artifactId") String artifactId) {
-        return artifactRepository.findById(artifactId)
-                .<ResponseEntity<?>>map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        try {
+            RenderArtifact artifact = artifactRepository.findById(artifactId)
+                    .orElseThrow(() -> new NoSuchElementException("Artifact not found: " + artifactId));
+            checkWorkspacePermission(getWorkspaceIdForSession(artifact.getVersion().getSession().getId()), "jobs.share");
+            return ResponseEntity.ok(artifact);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     @GetMapping("/sessions/{sessionId}/waveform")
     public ResponseEntity<?> getWaveform(@PathVariable("sessionId") String sessionId) {
         try {
+            checkWorkspacePermission(getWorkspaceIdForSession(sessionId), "jobs.share");
             EditSession session = sessionRepository.findById(sessionId)
                     .orElseThrow(() -> new NoSuchElementException("Session not found: " + sessionId));
             String userId = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
@@ -179,6 +199,7 @@ public class EditorController {
     @GetMapping("/sessions/{sessionId}/sprite")
     public ResponseEntity<?> getSpriteSheet(@PathVariable("sessionId") String sessionId) {
         try {
+            checkWorkspacePermission(getWorkspaceIdForSession(sessionId), "jobs.share");
             EditSession session = sessionRepository.findById(sessionId)
                     .orElseThrow(() -> new NoSuchElementException("Session not found: " + sessionId));
             String userId = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
@@ -200,6 +221,7 @@ public class EditorController {
     @GetMapping("/sessions/{sessionId}/sprite-meta")
     public ResponseEntity<?> getSpriteMeta(@PathVariable("sessionId") String sessionId) {
         try {
+            checkWorkspacePermission(getWorkspaceIdForSession(sessionId), "jobs.share");
             EditSession session = sessionRepository.findById(sessionId)
                     .orElseThrow(() -> new NoSuchElementException("Session not found: " + sessionId));
             String userId = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
@@ -216,5 +238,27 @@ public class EditorController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    private void checkWorkspacePermission(String workspaceId, String permission) {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        boolean hasPermission = permissionEvaluator.hasPermission(auth, workspaceId, "WORKSPACE", permission);
+        if (!hasPermission) {
+            throw new org.springframework.security.access.AccessDeniedException("User does not have permission " + permission + " in workspace " + workspaceId);
+        }
+    }
+
+    private String getWorkspaceIdForClip(String clipId) {
+        JobClip clip = jobClipRepository.findById(clipId)
+                .orElseThrow(() -> new NoSuchElementException("JobClip not found: " + clipId));
+        Job job = jobRepository.findById(clip.getJobId())
+                .orElseThrow(() -> new NoSuchElementException("Job not found: " + clip.getJobId()));
+        return job.getWorkspaceId();
+    }
+
+    private String getWorkspaceIdForSession(String sessionId) {
+        EditSession session = sessionRepository.findById(sessionId)
+                .orElseThrow(() -> new NoSuchElementException("EditSession not found: " + sessionId));
+        return getWorkspaceIdForClip(session.getClipId());
     }
 }

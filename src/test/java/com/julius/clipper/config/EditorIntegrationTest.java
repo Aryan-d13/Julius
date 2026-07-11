@@ -57,6 +57,18 @@ public class EditorIntegrationTest {
     private AuthService authService;
 
     @Autowired
+    private JobRepository jobRepository;
+
+    @Autowired
+    private WorkspaceRepository workspaceRepository;
+
+    @Autowired
+    private OrganizationRepository organizationRepository;
+
+    @Autowired
+    private MembershipRepository membershipRepository;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     @Autowired
@@ -69,15 +81,37 @@ public class EditorIntegrationTest {
     public void setUp() throws Exception {
         sessionRepository.deleteAll();
         jobClipRepository.deleteAll();
+        jobRepository.deleteAll();
+        membershipRepository.deleteAll();
+        workspaceRepository.deleteAll();
+        organizationRepository.deleteAll();
         userRepository.deleteAll();
 
         if (roleRepository.findByName("ROLE_USER").isEmpty()) {
             roleRepository.save(new Role("role-user-uuid-placeholder-1111", "ROLE_USER"));
         }
+        if (roleRepository.findByName("ROLE_ORG_OWNER").isEmpty()) {
+            roleRepository.save(new Role("role-org-owner-uuid-1111", "ROLE_ORG_OWNER"));
+        }
 
         User user = authService.register("editor@julius.com", "Password123!", "Editor User");
         AuthResponse auth = authService.login("editor@julius.com", "Password123!", "127.0.0.1", "agent", "corr", "req");
         this.authToken = auth.accessToken();
+
+        Workspace personalWorkspace = workspaceRepository.findAll().stream()
+                .filter(w -> w.getOrganization().getName().contains("Editor User"))
+                .findFirst().orElseThrow();
+        String workspaceId = personalWorkspace.getId();
+
+        // Seed a Job
+        Job job = Job.builder()
+                .id("job-uuid-1111")
+                .userId(user.getId())
+                .workspaceId(workspaceId)
+                .createdByUserId(user.getId())
+                .correlationId("corr-1111")
+                .build();
+        jobRepository.save(job);
 
         // Seed a JobClip
         JobClip clip = JobClip.builder()
