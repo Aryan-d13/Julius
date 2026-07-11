@@ -5,6 +5,11 @@ All notable changes to Julius will be documented in this file.
 ## [Unreleased] - 2026-07-11
 
 ### Added
+*   **Julius Customer Platform Web Application (Epic 8):** Implemented the Next.js production-ready customer dashboard styled with custom Vanilla CSS variables theme.
+*   **Integrated Multi-View Client Routing:** Orchestrates pages for Landing, Login/Register Authentication, Wizard Onboardings, Active Jobs Details, Clip Library, and Control Settings.
+*   **Interactive Split-Screen Clip Viewer:** Embedded video previews, clickable word-seeking transcripts, caption hooks presets, and download anchors.
+*   **Keyboard Shortcut Bindings:** Implemented listeners for play/pause (`Space`), seeks (`J`/`K`), and palette trigger (`Cmd+K`).
+*   **Real-time EventSource Monitor:** Binds log terminal scrolls and progress timelines to worker SSE channels.
 *   **Enterprise Operations & Admin Platform (Epic 7):** Designed and implemented the complete admin REST platform under `/api/admin/**` path mappings.
 *   **Polymorphic Global Search:** Added centralized `/search` endpoint resolving query hits across users, organizations, workspaces, and jobs.
 *   **Operator Internal Notes:** Added database support for attaching operator-only debugging notes to users, organizations, and workspaces.
