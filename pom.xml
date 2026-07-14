@@ -223,7 +223,7 @@
                 <groupId>org.flywaydb</groupId>
                 <artifactId>flyway-maven-plugin</artifactId>
                 <configuration>
-                    <url>jdbc:postgresql://localhost:5432/julius</url>
+                    <url>jdbc:postgresql://localhost:5433/julius</url>
                     <user>julius</user>
                     <password>julius</password>
                 </configuration>

@@ -35,7 +35,7 @@ Julius requires PostgreSQL 16 (relational database) and Redis (caching and job q
    ```bash
    docker compose ps
    ```
-   * **PostgreSQL** runs on `localhost:5432` (credentials: `julius`/`julius`).
+   * **PostgreSQL** runs on `localhost:5433` (credentials: `julius`/`julius`).
    * **Redis** runs on `localhost:6379`.
 
 ---

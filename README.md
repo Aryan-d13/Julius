@@ -86,7 +86,7 @@ Verify the health of the containers:
 ```bash
 docker compose ps
 ```
-* **PostgreSQL** runs on `localhost:5432` (Credentials: User: `julius` / Password: `julius` / DB: `julius`).
+* **PostgreSQL** runs on `localhost:5433` (Credentials: User: `julius` / Password: `julius` / DB: `julius`).
 * **Redis** runs on `localhost:6379`.
 
 ---
@@ -173,7 +173,7 @@ npm run lint
 ## 5. Troubleshooting Diagnostics
 
 * **FFmpeg Command Failures**: Ensure `ffmpeg` is globally executable. Run `ffmpeg -version` in your terminal. If it fails, add the directory housing the binary to your environment's path variables.
-* **Docker Port Conflicts**: If port `5432` or `6379` is already bound by host services, modify the mappings inside `docker-compose.yml` to prevent binding overlaps.
+* **Docker Port Conflicts**: If port `5433` or `6379` is already bound by host services, modify the mappings inside `docker-compose.yml` to prevent binding overlaps.
 * **Corrupted Flyway Databases**: To reset the schema migration versioning and start with fresh seeded data, run:
   ```bash
   docker compose down -v
