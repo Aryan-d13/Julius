@@ -72,7 +72,9 @@ export function useEventSource(jobId: string): UseEventSourceReturn {
   useEffect(() => {
     if (!jobId) return;
 
-    setStatus('connecting');
+    setTimeout(() => {
+      setStatus('connecting');
+    }, 0);
     const es = new EventSource(`${SSE_BASE_URL}/api/jobs/${jobId}/stream`);
     eventSourceRef.current = es;
 

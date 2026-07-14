@@ -2,6 +2,14 @@ package com.julius.clipper.controller;
 
 import com.julius.clipper.domain.InternalNote;
 import com.julius.clipper.service.AdminService;
+import com.julius.clipper.service.BillingService;
+import com.julius.clipper.service.BillingProvider;
+import com.julius.clipper.repository.SubscriptionRepository;
+import com.julius.clipper.repository.BillingJournalEntryRepository;
+import com.julius.clipper.repository.BillingTransactionRepository;
+import com.julius.clipper.domain.BillingTransaction;
+import com.julius.clipper.domain.BillingJournalEntry;
+import com.julius.clipper.domain.Subscription;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -17,9 +25,25 @@ import java.util.Map;
 public class AdminController {
 
     private final AdminService adminService;
+    private final BillingService billingService;
+    private final BillingProvider billingProvider;
+    private final SubscriptionRepository subscriptionRepository;
+    private final BillingTransactionRepository transactionRepository;
+    private final BillingJournalEntryRepository journalEntryRepository;
 
-    public AdminController(AdminService adminService) {
+    public AdminController(
+            AdminService adminService,
+            BillingService billingService,
+            BillingProvider billingProvider,
+            SubscriptionRepository subscriptionRepository,
+            BillingTransactionRepository transactionRepository,
+            BillingJournalEntryRepository journalEntryRepository) {
         this.adminService = adminService;
+        this.billingService = billingService;
+        this.billingProvider = billingProvider;
+        this.subscriptionRepository = subscriptionRepository;
+        this.transactionRepository = transactionRepository;
+        this.journalEntryRepository = journalEntryRepository;
     }
 
     @GetMapping("/search")
@@ -128,6 +152,58 @@ public class AdminController {
         metrics.put("utilizationRatio", 0.375);
         metrics.put("averageProcessingLatencyMs", 1250);
         return ResponseEntity.ok(metrics);
+    }
+
+    @PostMapping("/billing/organizations/{orgId}/topup")
+    public ResponseEntity<?> topUpOrganization(
+            @PathVariable String orgId,
+            @RequestBody Map<String, Object> body) {
+        try {
+            Number amountNum = (Number) body.get("amount");
+            if (amountNum == null) {
+                throw new IllegalArgumentException("Missing required parameter: amount");
+            }
+            long amount = amountNum.longValue();
+            String correlationId = "promo-topup-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+            billingService.recordPromotionalCreditLedger(orgId, amount, correlationId);
+            return ResponseEntity.ok(Map.of("message", "Promotional credit top-up recorded successfully", "amount", amount, "correlationId", correlationId));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/billing/organizations/{orgId}/reconcile")
+    public ResponseEntity<?> reconcileOrganization(@PathVariable String orgId) {
+        try {
+            Subscription sub = subscriptionRepository.findByOrganizationId(orgId).orElse(null);
+            if (sub != null && sub.getStripeSubscriptionId() != null) {
+                billingProvider.syncSubscription(sub.getStripeSubscriptionId());
+            }
+            return ResponseEntity.ok(Map.of("message", "Reconciliation triggered successfully"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/billing/organizations/{orgId}/ledger")
+    public ResponseEntity<?> getOrganizationLedger(@PathVariable String orgId) {
+        try {
+            long cashBalance = billingService.getAccountBalance(orgId, "Cash (Stripe)");
+            long prepaidBalance = billingService.getAccountBalance(orgId, "Prepaid Balance (Deferred Revenue)");
+            long subRevenue = billingService.getAccountBalance(orgId, "Subscription Revenue");
+            long usageRevenue = billingService.getAccountBalance(orgId, "Prepaid Usage Revenue");
+
+            Map<String, Object> ledgerInfo = new HashMap<>();
+            ledgerInfo.put("organizationId", orgId);
+            ledgerInfo.put("cashBalanceMinorUnits", cashBalance);
+            ledgerInfo.put("prepaidBalanceMinorUnits", prepaidBalance);
+            ledgerInfo.put("subscriptionRevenueMinorUnits", subRevenue);
+            ledgerInfo.put("usageRevenueMinorUnits", usageRevenue);
+            
+            return ResponseEntity.ok(ledgerInfo);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
     }
 
     private String getClientIp(HttpServletRequest request) {

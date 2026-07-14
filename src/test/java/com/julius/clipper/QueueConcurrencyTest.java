@@ -33,15 +33,36 @@ import static org.junit.jupiter.api.Assertions.*;
     "spring.jpa.hibernate.ddl-auto=validate",
     "spring.flyway.enabled=true"
 })
-@Testcontainers
 @Tag("integration")
 public class QueueConcurrencyTest {
 
     private static final Logger log = LoggerFactory.getLogger(QueueConcurrencyTest.class);
 
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+    static PostgreSQLContainer<?> postgres;
+
+    private static boolean isDockerAvailable() {
+        try {
+            return org.testcontainers.DockerClientFactory.instance().isDockerAvailable();
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
+    @org.springframework.test.context.DynamicPropertySource
+    static void configureProperties(org.springframework.test.context.DynamicPropertyRegistry registry) {
+        if (isDockerAvailable()) {
+            postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+            postgres.start();
+            registry.add("spring.datasource.url", postgres::getJdbcUrl);
+            registry.add("spring.datasource.username", postgres::getUsername);
+            registry.add("spring.datasource.password", postgres::getPassword);
+        }
+    }
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(isDockerAvailable(), "Docker is not available, skipping Postgres queue concurrency test");
+    }
 
     @MockBean
     private RedisConnectionFactory redisConnectionFactory;

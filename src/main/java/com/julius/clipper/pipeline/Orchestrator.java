@@ -11,6 +11,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.julius.clipper.service.BillingService;
+
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -28,6 +30,10 @@ public class Orchestrator {
     private final EventPublisher eventPublisher;
     private final StringRedisTemplate redisTemplate;
     private final MeterRegistry meterRegistry;
+    private final WorkspaceRepository workspaceRepository;
+    private final BillingService billingService;
+    private final UsageEventRepository usageEventRepository;
+    private final OutboxEventRepository outboxEventRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public Orchestrator(JobRepository jobRepository, 
@@ -36,7 +42,11 @@ public class Orchestrator {
                         TaskRepository taskRepository,
                         EventPublisher eventPublisher, 
                         StringRedisTemplate redisTemplate,
-                        MeterRegistry meterRegistry) {
+                        MeterRegistry meterRegistry,
+                        WorkspaceRepository workspaceRepository,
+                        BillingService billingService,
+                        UsageEventRepository usageEventRepository,
+                        OutboxEventRepository outboxEventRepository) {
         this.jobRepository = jobRepository;
         this.jobClipRepository = jobClipRepository;
         this.jobStepRepository = jobStepRepository;
@@ -44,6 +54,10 @@ public class Orchestrator {
         this.eventPublisher = eventPublisher;
         this.redisTemplate = redisTemplate;
         this.meterRegistry = meterRegistry;
+        this.workspaceRepository = workspaceRepository;
+        this.billingService = billingService;
+        this.usageEventRepository = usageEventRepository;
+        this.outboxEventRepository = outboxEventRepository;
     }
 
     @Transactional
@@ -252,6 +266,41 @@ public class Orchestrator {
             job.setStatus(JobDBStatus.COMPLETED);
             jobRepository.save(job);
             
+            // Record billing usage and outbox
+            Workspace ws = null;
+            if (job.getWorkspaceId() != null) {
+                ws = workspaceRepository.findById(job.getWorkspaceId()).orElse(null);
+            }
+            if (ws != null) {
+                String orgId = ws.getOrganization().getId();
+                UsageEvent usageEvent = UsageEvent.builder()
+                        .id(UUID.randomUUID().toString())
+                        .organizationId(orgId)
+                        .eventType("RENDER_JOBS")
+                        .quantity(1.0)
+                        .correlationId(job.getCorrelationId())
+                        .createdAt(LocalDateTime.now())
+                        .build();
+                usageEventRepository.save(usageEvent);
+
+                try {
+                    String payload = objectMapper.writeValueAsString(Map.of(
+                            "organizationId", orgId,
+                            "quantity", 1.0,
+                            "jobId", jobId
+                    ));
+                    OutboxEvent outboxEvent = OutboxEvent.builder()
+                            .eventType("USAGE_DEBIT")
+                            .payload(payload)
+                            .status("PENDING")
+                            .correlationId(job.getCorrelationId())
+                            .build();
+                    outboxEventRepository.save(outboxEvent);
+                } catch (Exception ex) {
+                    log.error("Failed to write outbox event on job completion: {}", jobId, ex);
+                }
+            }
+
             // Emit final completion event
             eventPublisher.publish(jobId, job.getUserId(), "job_completed", 
                     Map.of("clips_ready", readyCount, "total_clips", job.getClipCount()), 
@@ -290,6 +339,13 @@ public class Orchestrator {
         job.setErrorMessage(error.length() > 500 ? error.substring(0, 500) : error);
         job.setCompletedAt(LocalDateTime.now());
         jobRepository.save(job);
+
+        // Release consumed quota
+        Workspace ws = workspaceRepository.findById(job.getWorkspaceId()).orElse(null);
+        if (ws != null) {
+            String orgId = ws.getOrganization().getId();
+            billingService.releaseQuota(orgId, "RENDER_JOBS", 1.0);
+        }
 
         // 2. Delete Redis Join keys
         String joinKeyPattern = "seone:" + (userId != null ? userId : job.getUserId()) + ":join:" + jobId + ":*";

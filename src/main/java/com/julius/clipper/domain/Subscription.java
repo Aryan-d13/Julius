@@ -1,46 +1,46 @@
 package com.julius.clipper.domain;
 
-import com.julius.clipper.domain.converter.MapJsonConverter;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
 
 @Entity
-@Table(name = "clips")
+@Table(name = "subscriptions")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Clip {
+public class Subscription {
     @Id
     @Column(name = "id", length = 36)
     private String id;
 
-    @Column(name = "source_url")
-    private String sourceUrl;
+    @Column(name = "organization_id", nullable = false, unique = true, length = 36)
+    private String organizationId;
 
-    @Column(name = "source_type")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "plan_id", nullable = false)
+    private BillingPlan plan;
+
+    @Column(name = "stripe_subscription_id", unique = true, length = 100)
+    private String stripeSubscriptionId;
+
+    @Column(name = "status", nullable = false, length = 50)
+    private String status; // 'TRIALING', 'ACTIVE', 'PAST_DUE', 'DISPUTED', 'REFUNDED', 'SUSPENDED', 'CANCELED'
+
+    @Version
+    @Column(name = "version", nullable = false)
     @Builder.Default
-    private String sourceType = "other";
+    private long version = 0L;
 
-    @Column(name = "storage_key")
-    private String storageKey;
+    @Column(name = "current_period_start", nullable = false)
+    private LocalDateTime currentPeriodStart;
 
-    @Column(name = "status")
-    @Builder.Default
-    private String status = "pending";
+    @Column(name = "current_period_end", nullable = false)
+    private LocalDateTime currentPeriodEnd;
 
-    @Convert(converter = MapJsonConverter.class)
-    @Column(name = "metadata_info", columnDefinition = "text")
-    @Builder.Default
-    private Map<String, Object> metadataInfo = new HashMap<>();
-
-    @Convert(converter = MapJsonConverter.class)
-    @Column(name = "analysis_results", columnDefinition = "text")
-    @Builder.Default
-    private Map<String, Object> analysisResults = new HashMap<>();
+    @Column(name = "canceled_at")
+    private LocalDateTime canceledAt;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default

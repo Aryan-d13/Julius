@@ -32,21 +32,42 @@ import static org.junit.jupiter.api.Assertions.*;
  * - CRUD operations work on all critical entities
  * - Health actuator endpoint returns UP
  */
-@SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+@org.springframework.boot.test.context.SpringBootTest(
+    webEnvironment = org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
         "clipper.queue.type=db",
         "spring.jpa.hibernate.ddl-auto=validate",
         "spring.flyway.enabled=true"
     }
 )
-@Testcontainers
 @Tag("integration")
 public class PostgresIntegrationTest {
 
-    @Container
-    @ServiceConnection
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+    static PostgreSQLContainer<?> postgres;
+
+    private static boolean isDockerAvailable() {
+        try {
+            return org.testcontainers.DockerClientFactory.instance().isDockerAvailable();
+        } catch (Throwable e) {
+            return false;
+        }
+    }
+
+    @org.springframework.test.context.DynamicPropertySource
+    static void configureProperties(org.springframework.test.context.DynamicPropertyRegistry registry) {
+        if (isDockerAvailable()) {
+            postgres = new PostgreSQLContainer<>("postgres:16-alpine");
+            postgres.start();
+            registry.add("spring.datasource.url", postgres::getJdbcUrl);
+            registry.add("spring.datasource.username", postgres::getUsername);
+            registry.add("spring.datasource.password", postgres::getPassword);
+        }
+    }
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUp() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(isDockerAvailable(), "Docker is not available, skipping Postgres test");
+    }
 
     // Mock Redis dependencies — not required for database migration testing
     @MockBean

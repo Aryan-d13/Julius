@@ -140,7 +140,7 @@ Tracks individual pipeline step execution within a job.
 | `idx_job_steps_job_id` | `job_id` INDEX |
 
 ### `clips`
-Source media catalog (scaffolding for future media library feature). **Not actively used** by any service, controller, or worker in the current codebase. Entity and repository exist; table is created for forward compatibility.
+Source media catalog (scaffolding for future media library feature). **Not actively used** by any service, controller, or worker in the current codebase. The table is created in database schema migration V1 for forward compatibility, but the unused Java `Clip` entity and `ClipRepository` have been removed to keep the active code footprint clean.
 
 ### `ux_facts`
 Content snippets displayed during processing wait times.
@@ -166,3 +166,44 @@ Several columns store serialized JSON as `TEXT`:
 | `clips` | `analysis_results` | `MapJsonConverter` | `Map<String, Object>` |
 
 These use standard `TEXT` type (not PostgreSQL `jsonb`) for H2 compatibility.
+
+## Billing & Quota Platform Schema
+
+Introduced in Epic 12, this sub-system implements a true immutable double-entry accounting ledger and a CAS-optimized Quota Engine.
+
+### Billing Tables
+
+#### `billing_plans`
+Defines available pricing plans (e.g., Free, Basic, Pro). Tracks Stripe Price API identifiers.
+
+#### `subscriptions`
+Binds organizations to billing plans. Enforces subscription lifecycle states: `TRIALING`, `ACTIVE`, `PAST_DUE`, `DISPUTED`, `REFUNDED`, `SUSPENDED`, `CANCELED`. Utilizes optimistic locking version checks.
+
+#### `subscription_state_history`
+Maintains an immutable transition log of all subscription status modifications.
+
+#### `billing_journals`
+Entry point of double-entry ledger mappings per organization. Links Stripe Customer ID tracking.
+
+#### `billing_accounts`
+Ledger accounts under journals (e.g., `Cash`, `Revenue`, `Deferred Revenue`). Accounts are classified into types: `ASSET`, `LIABILITY`, `EQUITY`, `REVENUE`, `EXPENSE`.
+
+#### `billing_transactions`
+Atomic transaction events containing description and correlation IDs for replay protection.
+
+#### `billing_journal_entries`
+Line-items of debit/credit values. Enforces that sum of DEBIT values equals sum of CREDIT values for every transaction. Amount is specified in positive minor units (cents).
+
+### Quotas & Outbox Tables
+
+#### `quota_usage_snapshots`
+Caches usage boundaries and balances per organization/feature. Employs Compare-And-Swap (CAS) optimistic check queries to prevent usage concurrency leaks.
+
+#### `usage_events`
+Append-only log of granular billable actions (transcriptions, renders, storage changes). Suitable for time-based partitioning.
+
+#### `outbox_events`
+Transactional Outbox table storing outbound events to trigger downstream notifications/syncs reliably.
+
+#### `webhook_idempotency_ledger`
+Logs processed Stripe webhook event IDs to prevent duplicate processing.

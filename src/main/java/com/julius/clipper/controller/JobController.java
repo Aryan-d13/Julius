@@ -10,6 +10,9 @@ import com.julius.clipper.pipeline.TaskStatus;
 import com.julius.clipper.pipeline.TaskType;
 import com.julius.clipper.repository.JobClipRepository;
 import com.julius.clipper.repository.JobRepository;
+import com.julius.clipper.repository.WorkspaceRepository;
+import com.julius.clipper.service.BillingService;
+import com.julius.clipper.domain.Workspace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.connection.Message;
@@ -35,80 +38,99 @@ public class JobController {
     private final JobClipRepository jobClipRepository;
     private final QueueProvider queueProvider;
     private final RedisMessageListenerContainer redisMessageListenerContainer;
+    private final WorkspaceRepository workspaceRepository;
+    private final BillingService billingService;
 
     public JobController(JobRepository jobRepository,
                          JobClipRepository jobClipRepository,
                          QueueProvider queueProvider,
-                         RedisMessageListenerContainer redisMessageListenerContainer) {
+                         RedisMessageListenerContainer redisMessageListenerContainer,
+                         WorkspaceRepository workspaceRepository,
+                         BillingService billingService) {
         this.jobRepository = jobRepository;
         this.jobClipRepository = jobClipRepository;
         this.queueProvider = queueProvider;
         this.redisMessageListenerContainer = redisMessageListenerContainer;
+        this.workspaceRepository = workspaceRepository;
+        this.billingService = billingService;
     }
 
     @PostMapping
     @PreAuthorize("hasPermission(#workspaceId, 'WORKSPACE', 'jobs.create')")
-    public ResponseEntity<Map<String, String>> submitJob(
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> submitJob(
             @PathVariable String workspaceId,
             @RequestBody JobConfig config) {
-        
-        String jobId = UUID.randomUUID().toString();
-        String userId = SecurityContextHolder.getContext().getAuthentication().getName();
-        String correlationId = org.slf4j.MDC.get(com.julius.clipper.telemetry.CorrelationFilter.CORRELATION_ID_MDC_KEY);
-        String requestId = org.slf4j.MDC.get(com.julius.clipper.telemetry.CorrelationFilter.REQUEST_ID_MDC_KEY);
-        
-        if (correlationId == null || correlationId.isBlank()) {
-            correlationId = "corr-" + UUID.randomUUID().toString().substring(0, 8);
+        try {
+            Workspace ws = workspaceRepository.findById(workspaceId)
+                    .orElseThrow(() -> new IllegalArgumentException("Workspace not found: " + workspaceId));
+            String orgId = ws.getOrganization().getId();
+
+            // Perform CAS quota verification
+            billingService.consumeQuota(orgId, "RENDER_JOBS", 1.0);
+
+            String jobId = UUID.randomUUID().toString();
+            String userId = SecurityContextHolder.getContext().getAuthentication().getName();
+            String correlationId = org.slf4j.MDC.get(com.julius.clipper.telemetry.CorrelationFilter.CORRELATION_ID_MDC_KEY);
+            String requestId = org.slf4j.MDC.get(com.julius.clipper.telemetry.CorrelationFilter.REQUEST_ID_MDC_KEY);
+            
+            if (correlationId == null || correlationId.isBlank()) {
+                correlationId = "corr-" + UUID.randomUUID().toString().substring(0, 8);
+            }
+            if (requestId == null || requestId.isBlank()) {
+                requestId = "req-" + UUID.randomUUID().toString().substring(0, 8);
+            }
+
+            log.info("Submitting new clip job config in workspace {}: URL={}, count={}", workspaceId, config.getUrl(), config.getCount());
+
+            // Persist new Job record linked to workspace and creator
+            Job job = Job.builder()
+                    .id(jobId)
+                    .userId(userId)
+                    .workspaceId(workspaceId)
+                    .createdByUserId(userId)
+                    .correlationId(correlationId)
+                    .config(config)
+                    .clipCount(config.getCount())
+                    .status(JobDBStatus.PENDING)
+                    .build();
+            jobRepository.save(job);
+
+            // Build initial Task payload
+            Map<String, Object> taskPayload = new HashMap<>();
+            taskPayload.put("job_id", jobId);
+            taskPayload.put("user_id", userId);
+            taskPayload.put("workspace_id", workspaceId);
+            taskPayload.put("url", config.getUrl());
+            taskPayload.put("count", config.getCount());
+            taskPayload.put("copy_language", config.getCopyLanguage() != null ? config.getCopyLanguage() : "en");
+            taskPayload.put("min_duration", config.getMinDuration() > 0 ? config.getMinDuration() : 30.0);
+            taskPayload.put("max_duration", config.getMaxDuration() > 0 ? config.getMaxDuration() : 900.0);
+
+            Map<String, Object> taskMetadata = new HashMap<>();
+            taskMetadata.put("correlation_id", correlationId);
+            taskMetadata.put("request_id", requestId);
+
+            Task downloadTask = Task.builder()
+                    .id(UUID.randomUUID().toString())
+                    .type(TaskType.DOWNLOAD)
+                    .payload(taskPayload)
+                    .metadata(taskMetadata)
+                    .status(TaskStatus.PENDING)
+                    .build();
+
+            queueProvider.push(downloadTask);
+
+            log.info("Job successfully submitted and enqueued initial DOWNLOAD task: jobId={}", jobId);
+
+            Map<String, String> response = new HashMap<>();
+            response.put("jobId", jobId);
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
+        } catch (BillingService.QuotaExceededException e) {
+            return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
-        if (requestId == null || requestId.isBlank()) {
-            requestId = "req-" + UUID.randomUUID().toString().substring(0, 8);
-        }
-
-        log.info("Submitting new clip job config in workspace {}: URL={}, count={}", workspaceId, config.getUrl(), config.getCount());
-
-        // Persist new Job record linked to workspace and creator
-        Job job = Job.builder()
-                .id(jobId)
-                .userId(userId)
-                .workspaceId(workspaceId)
-                .createdByUserId(userId)
-                .correlationId(correlationId)
-                .config(config)
-                .clipCount(config.getCount())
-                .status(JobDBStatus.PENDING)
-                .build();
-        jobRepository.save(job);
-
-        // Build initial Task payload
-        Map<String, Object> taskPayload = new HashMap<>();
-        taskPayload.put("job_id", jobId);
-        taskPayload.put("user_id", userId);
-        taskPayload.put("workspace_id", workspaceId);
-        taskPayload.put("url", config.getUrl());
-        taskPayload.put("count", config.getCount());
-        taskPayload.put("copy_language", config.getCopyLanguage() != null ? config.getCopyLanguage() : "en");
-        taskPayload.put("min_duration", config.getMinDuration() > 0 ? config.getMinDuration() : 30.0);
-        taskPayload.put("max_duration", config.getMaxDuration() > 0 ? config.getMaxDuration() : 900.0);
-
-        Map<String, Object> taskMetadata = new HashMap<>();
-        taskMetadata.put("correlation_id", correlationId);
-        taskMetadata.put("request_id", requestId);
-
-        Task downloadTask = Task.builder()
-                .id(UUID.randomUUID().toString())
-                .type(TaskType.DOWNLOAD)
-                .payload(taskPayload)
-                .metadata(taskMetadata)
-                .status(TaskStatus.PENDING)
-                .build();
-
-        queueProvider.push(downloadTask);
-
-        log.info("Job successfully submitted and enqueued initial DOWNLOAD task: jobId={}", jobId);
-
-        Map<String, String> response = new HashMap<>();
-        response.put("jobId", jobId);
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
     }
 
     @GetMapping("/{jobId}/clips")

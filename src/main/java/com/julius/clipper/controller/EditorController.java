@@ -8,9 +8,12 @@ import com.julius.clipper.service.TimelineEngine;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import com.julius.clipper.service.BillingService;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.*;
+import java.io.ByteArrayOutputStream;
+
 
 @RestController
 @RequestMapping("/api/editor")
@@ -27,6 +30,8 @@ public class EditorController {
     private final com.julius.clipper.service.StorageClient storageClient;
     private final JobRepository jobRepository;
     private final JobClipRepository jobClipRepository;
+    private final WorkspaceRepository workspaceRepository;
+    private final BillingService billingService;
     private final org.springframework.security.access.PermissionEvaluator permissionEvaluator;
 
     public EditorController(
@@ -40,6 +45,8 @@ public class EditorController {
             com.julius.clipper.service.StorageClient storageClient,
             JobRepository jobRepository,
             JobClipRepository jobClipRepository,
+            WorkspaceRepository workspaceRepository,
+            BillingService billingService,
             org.springframework.security.access.PermissionEvaluator permissionEvaluator) {
         this.editorEngine = editorEngine;
         this.renderEngine = renderEngine;
@@ -51,6 +58,8 @@ public class EditorController {
         this.storageClient = storageClient;
         this.jobRepository = jobRepository;
         this.jobClipRepository = jobClipRepository;
+        this.workspaceRepository = workspaceRepository;
+        this.billingService = billingService;
         this.permissionEvaluator = permissionEvaluator;
     }
 
@@ -123,11 +132,21 @@ public class EditorController {
     }
 
     @PostMapping("/sessions/{sessionId}/render")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> dispatchRender(
             @PathVariable("sessionId") String sessionId,
             @RequestParam("profileId") String profileId) {
         try {
-            checkWorkspacePermission(getWorkspaceIdForSession(sessionId), "jobs.create");
+            String workspaceId = getWorkspaceIdForSession(sessionId);
+            checkWorkspacePermission(workspaceId, "jobs.create");
+
+            Workspace ws = workspaceRepository.findById(workspaceId)
+                    .orElseThrow(() -> new IllegalArgumentException("Workspace not found: " + workspaceId));
+            String orgId = ws.getOrganization().getId();
+
+            // Perform CAS quota check
+            billingService.consumeQuota(orgId, "RENDER_JOBS", 1.0);
+
             ClipVersion version = versionRepository.findLatestVersionForSession(sessionId)
                     .orElseThrow(() -> new NoSuchElementException("Latest clip version not found for session: " + sessionId));
 
@@ -156,6 +175,9 @@ public class EditorController {
             res.put("renderHash", artifact.getRenderHash());
             res.put("url", artifact.getUrl());
             return ResponseEntity.ok(res);
+        } catch (BillingService.QuotaExceededException e) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.PAYMENT_REQUIRED)
+                    .body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
             log.error("Render dispatch failed: {}", e.getMessage());
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));

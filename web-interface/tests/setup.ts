@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import '@testing-library/jest-dom';
-import { beforeAll, afterAll, afterEach } from 'vitest';
+import { beforeAll, afterEach } from 'vitest';
 
 // Stub standard browser APIs if missing in JSDOM
 beforeAll(() => {

@@ -4,7 +4,21 @@ All notable changes to Julius will be documented in this file.
 
 ## [Unreleased] - 2026-07-11
 
+### Fixed
+*   **Billing Transactional & Concurrency Hardening (Red-Team Audit):**
+    *   Resolved `@Transactional` self-invocation in `OutboxProcessor` by extracting event execution logic into a dedicated `OutboxEventService` bean, securing Spring AOP proxy boundary enforcement.
+    *   Introduced `SELECT FOR UPDATE SKIP LOCKED` pessimistic locking for pending outbox events polling, eliminating multi-instance race conditions and status overwrite conflicts.
+    *   Enforced explicit `@Transactional` request-scoped boundaries on `submitJob` and `dispatchRender` controller endpoints, guaranteeing atomic Compare-And-Swap (CAS) quota rollback on downstream execution failures.
+    *   Secured `BillingController` checkout and portal endpoints against privilege escalation by injecting `PermissionEvaluator` and validating `billing.manage` organizational permissions.
+
 ### Added
+*   **Billing, Quotas & Subscription Platform (Epic 12):**
+    *   Implemented a production-ready billing engine integrated with Stripe Checkout sessions and Stripe Customer Portal.
+    *   Created a true balanced Double-Entry Accounting Ledger structure (`Journal`, `Account`, `Transaction`, `JournalEntry`) ensuring debit/credit parity.
+    *   Designed a Compare-And-Swap (CAS) optimized `QuotaEngine` using atomic update locks to prevent race-condition concurrency bypasses.
+    *   Built a secure Stripe Webhook listener supporting idempotency keys signature validation and event replay protection.
+    *   Configured a Transactional Outbox processor executing asynchronous downstream events securely.
+    *   Added administrative operational REST endpoints for billing management, manual credits, and ledgers auditing.
 *   **Interactive Editing & Subtitle Platform (Epic 9):** Built non-destructive versioned editing session domain layers (`EditSession`, `ClipVersion`, `SubtitleStyle`, `RenderProfile`, `RenderArtifact`).
 *   **WAV Audio Waveform Peak Ingest:** Implemented `WaveformGenerator` extracting and caching normalized amplitude arrays during media ingestion.
 *   **FFmpeg Thumbnail Sprite Tiling:** Created `SpriteGenerator` producing sprite sheet image blocks and metadata grids for editor scrubber timelines.

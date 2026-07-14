@@ -27,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("live")
 @Tag("integration")
+@org.junit.jupiter.api.Disabled("Requires external network access and workspace authentication configuration")
 public class ClipperSmokeTest {
 
     private static final Logger log = LoggerFactory.getLogger(ClipperSmokeTest.class);
