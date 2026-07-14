@@ -1,4 +1,4 @@
-import { BACKEND_URL, AUTH_TOKEN_KEY, ACCESS_TOKEN_COOKIE_KEY } from './constants';
+import { BACKEND_URL, AUTH_TOKEN_KEY, ACCESS_TOKEN_COOKIE_KEY, CURRENT_USER_KEY } from './constants';
 
 class HttpClient {
   private token: string | null = null;
@@ -53,6 +53,13 @@ class HttpClient {
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        this.setToken(null);
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(CURRENT_USER_KEY);
+          window.location.href = '/login';
+        }
+      }
       let errorMsg = `API request failed with status: ${response.status}`;
       try {
         const errData = await response.json();

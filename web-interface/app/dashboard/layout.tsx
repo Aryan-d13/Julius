@@ -10,6 +10,7 @@ import { useAuthGuard } from '../../hooks/useAuthGuard';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { CommandPalette } from '../../components/CommandPalette';
 import { AUTH_TOKEN_KEY, CURRENT_USER_KEY } from '../../lib/constants';
+import { httpClient } from '../../lib/httpClient';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -32,9 +33,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await httpClient.request('/api/auth/logout', { method: 'POST' });
+    } catch (e) {
+      console.error('Logout failed', e);
+    }
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(CURRENT_USER_KEY);
+    httpClient.setToken(null);
     router.push('/');
   };
 
