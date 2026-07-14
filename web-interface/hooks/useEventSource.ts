@@ -12,7 +12,7 @@ interface UseEventSourceReturn {
   failedStep: string | null;
 }
 
-export function useEventSource(jobId: string): UseEventSourceReturn {
+export function useEventSource(workspaceId: string, jobId: string): UseEventSourceReturn {
   const [logs, setLogs] = useState<LogMessage[]>([]);
   const [status, setStatus] = useState<SseConnectionStatus>('disconnected');
   const [activeStep, setActiveStep] = useState<string | null>(null);
@@ -70,12 +70,12 @@ export function useEventSource(jobId: string): UseEventSourceReturn {
   );
 
   useEffect(() => {
-    if (!jobId) return;
+    if (!workspaceId || !jobId) return;
 
     setTimeout(() => {
       setStatus('connecting');
     }, 0);
-    const es = new EventSource(`${SSE_BASE_URL}/api/jobs/${jobId}/stream`);
+    const es = new EventSource(`${SSE_BASE_URL}/api/workspaces/${workspaceId}/jobs/${jobId}/stream`);
     eventSourceRef.current = es;
 
     es.addEventListener('subscribed', () => {
@@ -101,7 +101,7 @@ export function useEventSource(jobId: string): UseEventSourceReturn {
       es.close();
       eventSourceRef.current = null;
     };
-  }, [jobId, appendLog, handlePipelineEvent]);
+  }, [workspaceId, jobId, appendLog, handlePipelineEvent]);
 
   return { logs, status, activeStep, completedSteps, failedStep };
 }

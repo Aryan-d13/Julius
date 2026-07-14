@@ -4,8 +4,8 @@ import type { CreateJobRequest } from '../../../types';
 
 export function useCreateJob() {
   return useMutation({
-    mutationFn: ({ payload, userId }: { payload: CreateJobRequest; userId?: string }) =>
-      jobsService.createJob(payload, userId),
+    mutationFn: ({ workspaceId, payload, userId }: { workspaceId: string; payload: CreateJobRequest; userId?: string }) =>
+      jobsService.createJob(workspaceId, payload, userId),
   });
 }
 

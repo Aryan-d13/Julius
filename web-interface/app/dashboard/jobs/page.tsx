@@ -8,10 +8,12 @@ import { Card } from '../../../components/ui/card';
 import { Input } from '../../../components/ui/input';
 import { Button } from '../../../components/ui/button';
 import { ACTIVE_JOB_KEY } from '../../../lib/constants';
+import { useWorkspace } from '../../../providers/WorkspaceProvider';
 
 export default function CreateJobPage() {
   const router = useRouter();
   const { user: currentUser } = useCurrentUser();
+  const { activeWorkspace } = useWorkspace();
   const createJob = useCreateJob();
 
   const [videoUrl, setVideoUrl] = useState('');
@@ -25,6 +27,7 @@ export default function CreateJobPage() {
     e.preventDefault();
     createJob.mutate(
       {
+        workspaceId: activeWorkspace.id,
         payload: {
           url: videoUrl.trim(),
           count: clipCount,

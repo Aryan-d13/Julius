@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 import CreateJobPage from '../../app/dashboard/jobs/page';
 import { QueryProvider } from '../../providers/QueryProvider';
+import { WorkspaceProvider } from '../../providers/WorkspaceProvider';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -14,7 +15,9 @@ vi.mock('next/navigation', () => ({
 test('simulation flow for job submission input state changes', async () => {
   render(
     <QueryProvider>
-      <CreateJobPage />
+      <WorkspaceProvider>
+        <CreateJobPage />
+      </WorkspaceProvider>
     </QueryProvider>
   );
 

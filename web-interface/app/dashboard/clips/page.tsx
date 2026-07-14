@@ -7,13 +7,15 @@ import { useNotification } from '../../../hooks/useNotification';
 import { ClipViewerModal } from '../../../components/ClipViewerModal';
 import { ACTIVE_JOB_KEY, MEDIA_BASE_URL } from '../../../lib/constants';
 import type { JobClip } from '../../../types';
+import { useWorkspace } from '../../../providers/WorkspaceProvider';
 
 export default function ClipsLibraryPage() {
+  const { activeWorkspace } = useWorkspace();
   const activeJobId = typeof window !== 'undefined'
     ? localStorage.getItem(ACTIVE_JOB_KEY)
     : null;
 
-  const { data: clips = [] } = useJobClips(activeJobId);
+  const { data: clips = [] } = useJobClips(activeWorkspace?.id, activeJobId);
   const [selectedClip, setSelectedClip] = useState<JobClip | null>(null);
   const notification = useNotification();
 

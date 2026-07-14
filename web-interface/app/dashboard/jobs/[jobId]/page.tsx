@@ -10,16 +10,18 @@ import { Card } from '../../../../components/ui/card';
 import { ClipViewerModal } from '../../../../components/ClipViewerModal';
 import { MEDIA_BASE_URL } from '../../../../lib/constants';
 import type { JobClip } from '../../../../types';
+import { useWorkspace } from '../../../../providers/WorkspaceProvider';
 
 export default function JobDetailPage() {
   const { jobId } = useParams() as { jobId: string };
-  const { logs, status: sseStatus, activeStep, completedSteps, failedStep } = useEventSource(jobId);
+  const { activeWorkspace } = useWorkspace();
+  const { logs, status: sseStatus, activeStep, completedSteps, failedStep } = useEventSource(activeWorkspace.id, jobId);
   const notification = useNotification();
   const logsEndRef = useRef<HTMLDivElement>(null);
   const [selectedClip, setSelectedClip] = useState<JobClip | null>(null);
 
   const isCompleted = completedSteps.includes('completed');
-  const { data: clips = [] } = useJobClips(isCompleted ? jobId : null);
+  const { data: clips = [] } = useJobClips(activeWorkspace.id, isCompleted ? jobId : null);
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });

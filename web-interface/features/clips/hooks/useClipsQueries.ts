@@ -5,11 +5,11 @@ export const clipsKeys = {
   byJob: (jobId: string) => ['clips', 'byJob', jobId] as const,
 };
 
-export function useJobClips(jobId: string | null) {
+export function useJobClips(workspaceId: string | null, jobId: string | null) {
   return useQuery({
     queryKey: clipsKeys.byJob(jobId ?? ''),
-    queryFn: () => clipsService.getJobClips(jobId!),
-    enabled: !!jobId,
+    queryFn: () => clipsService.getJobClips(workspaceId!, jobId!),
+    enabled: !!workspaceId && !!jobId,
     staleTime: 60_000,
   });
 }

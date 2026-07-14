@@ -2,12 +2,12 @@ import { httpClient } from '../../../lib/httpClient';
 import type { CreateJobRequest, CreateJobResponse, JobActionResponse } from '../../../types';
 
 export const jobsService = {
-  createJob: async (payload: CreateJobRequest, userId?: string): Promise<CreateJobResponse> => {
+  createJob: async (workspaceId: string, payload: CreateJobRequest, userId?: string): Promise<CreateJobResponse> => {
     const headers: Record<string, string> = {};
     if (userId) {
       headers['X-User-Id'] = userId;
     }
-    return httpClient.request<CreateJobResponse>('/api/jobs', {
+    return httpClient.request<CreateJobResponse>(`/api/workspaces/${workspaceId}/jobs`, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
