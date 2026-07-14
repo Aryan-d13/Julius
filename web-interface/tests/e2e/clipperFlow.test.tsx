@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
-import CreateJobPage from '../../app/(dashboard)/jobs/page';
+import CreateJobPage from '../../app/dashboard/jobs/page';
 import { QueryProvider } from '../../providers/QueryProvider';
 
 vi.mock('next/navigation', () => ({
