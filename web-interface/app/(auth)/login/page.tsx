@@ -67,14 +67,49 @@ export default function LoginPage() {
     }
   };
 
-  const handleFederatedLogin = (provider: string) => {
-    httpClient.setToken(`${provider}-mock-token`);
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({
-      id: `user-${provider}`,
-      email: `${provider}@julius.com`,
-      fullName: `${provider.toUpperCase()} User`
-    }));
-    router.push('/dashboard');
+  interface OAuth2CallbackResponse {
+    access_token: string;
+    refresh_token: string;
+    session_id: string;
+  }
+
+  const handleFederatedLogin = async (provider: string) => {
+    try {
+      const attributes = provider === 'google' 
+        ? {
+            sub: 'mock-google-id',
+            email: 'google@julius.com',
+            name: 'GOOGLE User',
+            email_verified: true
+          }
+        : {
+            id: 'mock-github-id',
+            email: 'github@julius.com',
+            name: 'GITHUB User',
+            login: 'github-user'
+          };
+
+      const res = await httpClient.request<OAuth2CallbackResponse>(`/api/auth/oauth2/callback?provider=${provider.toUpperCase()}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(attributes)
+      });
+
+      if (res.access_token) {
+        httpClient.setToken(res.access_token);
+        localStorage.setItem(CURRENT_USER_KEY, JSON.stringify({
+          id: `user-${provider}`,
+          email: `${provider}@julius.com`,
+          fullName: `${provider.toUpperCase()} User`
+        }));
+        router.push('/dashboard');
+      } else {
+        alert('SSO authentication did not return a token');
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      alert(errMsg || 'SSO authentication failed');
+    }
   };
 
   return (
